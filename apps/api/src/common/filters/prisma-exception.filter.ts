@@ -14,6 +14,7 @@ const UNIQUE_MESSAGES: Record<string, string> = {
   SESSION_ALREADY_ACTIVE: 'You already have a session in progress.',
   PROJECT_NAME_TAKEN: 'You already have a project with this name.',
   EMAIL_ALREADY_REGISTERED: 'This email address is already registered.',
+  DUPLICATE_MUTATION: 'This request was already processed.',
   UNIQUE_VIOLATION: 'A record with these values already exists.',
 };
 
@@ -64,18 +65,30 @@ export class PrismaExceptionFilter implements ExceptionFilter {
     }
   }
 
-  /** Names the specific rule that was broken, so clients can react precisely. */
+  /**
+   * Names the specific rule that was broken, so clients can react precisely.
+   *
+   * Prisma reports the offending *columns* in meta.target, not the index name —
+   * for an expression index it reports the expression itself. Matching on the
+   * model plus the columns is therefore the only reliable discriminator.
+   */
   private uniqueViolationCode(exception: Prisma.PrismaClientKnownRequestError): string {
     const target = exception.meta?.target;
-    const fields = Array.isArray(target)
-      ? target.join(',')
+    const columns = Array.isArray(target)
+      ? target.map(String)
       : typeof target === 'string'
-        ? target
-        : '';
+        ? [target]
+        : [];
+    const model = typeof exception.meta?.modelName === 'string' ? exception.meta.modelName : '';
+    const has = (fragment: string) => columns.some((column) => column.includes(fragment));
 
-    if (fields.includes('one_active_session_per_user')) return 'SESSION_ALREADY_ACTIVE';
-    if (fields.includes('unique_active_project_name_per_user')) return 'PROJECT_NAME_TAKEN';
-    if (fields.includes('email')) return 'EMAIL_ALREADY_REGISTERED';
+    if (model === 'PomodoroSession') {
+      if (has('client_mutation_id')) return 'DUPLICATE_MUTATION';
+      if (has('user_id')) return 'SESSION_ALREADY_ACTIVE';
+    }
+
+    if (model === 'Project' && has('name')) return 'PROJECT_NAME_TAKEN';
+    if (has('email')) return 'EMAIL_ALREADY_REGISTERED';
 
     return 'UNIQUE_VIOLATION';
   }
