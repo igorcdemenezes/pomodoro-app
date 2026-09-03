@@ -32,7 +32,7 @@ business rules such as whether a focus session may start.
 | Path          | Contents                                                               |
 | ------------- | ---------------------------------------------------------------------- |
 | `apps/api`    | NestJS backend: HTTP API, business rules, Prisma schema and migrations |
-| `apps/mobile` | Expo client                                                            |
+| `apps/mobile` | Expo client: screens, navigation, HTTP layer and offline cache         |
 | `docs`        | Technical plan and design notes                                        |
 
 ## Getting started
@@ -286,6 +286,25 @@ by the entrypoint when the container starts, and `migrate deploy` needs the CLI.
 `migrate deploy` only applies migrations already committed to the repository —
 it never generates one and never resets — so running it on every boot is safe
 and idempotent when several instances start at once.
+
+### Mobile app
+
+```bash
+npm run mobile start        # Metro, for a development build
+npm run mobile lint
+npm run mobile typecheck
+npm run mobile test
+```
+
+The client is an Expo app using Expo Router for file-based navigation, React
+Native Paper for the component layer, TanStack Query for server state and
+Zustand for the little local state that is genuinely local.
+
+Because the repository is an npm workspace, dependencies hoist to the root,
+where Metro does not look by default. `metro.config.js` adds the root to
+`watchFolders` and `nodeModulesPaths` and disables hierarchical lookup, so the
+bundler cannot resolve a second copy of React from a parent directory. Without
+it the app fails to bundle at all.
 
 ## Pointing the app at a backend
 
