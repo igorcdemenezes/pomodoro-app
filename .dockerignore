@@ -1,0 +1,18 @@
+# Everything the image builds from scratch or must never contain.
+node_modules
+**/node_modules
+**/dist
+**/coverage
+.git
+.github
+.husky
+.expo
+docs
+*.md
+.env
+.env.*
+!.env.example
+*.log
+*.apk
+*.aab
+apps/mobile
