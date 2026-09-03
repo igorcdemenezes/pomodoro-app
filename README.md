@@ -72,6 +72,11 @@ npm run db:psql -- -c '\l'       # lists pomodoro and pomodoro_test
 Data lives in the named volume `pomodoro-pgdata`, so it survives
 `npm run db:down` and machine restarts. Only `npm run db:reset` discards it.
 
+The container is published on host port **5433**, not the default 5432, because a
+development machine often already has something bound to 5432. Override
+`POSTGRES_PORT` in `.env` if 5433 is taken too — remember to update
+`DATABASE_URL` and `TEST_DATABASE_URL` to match.
+
 Schema and migrations arrive with the schema pull request, under
 `apps/api/prisma`.
 
