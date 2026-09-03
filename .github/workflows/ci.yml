@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pomodoro
+          POSTGRES_PASSWORD: pomodoro
+          POSTGRES_DB: pomodoro_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://pomodoro:pomodoro@localhost:5432/pomodoro_test?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Detect workspaces
+        id: detect
+        run: |
+          echo "api=$([ -f apps/api/package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "mobile=$([ -f apps/mobile/package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Lint API
+        if: steps.detect.outputs.api == 'true'
+        run: npm run --workspace @pomodoro/api lint --if-present
+
+      - name: Apply database migrations
+        if: steps.detect.outputs.api == 'true'
+        run: npm run --workspace @pomodoro/api migrate:deploy --if-present
+
+      - name: Test API
+        if: steps.detect.outputs.api == 'true'
+        run: npm run --workspace @pomodoro/api test:ci --if-present
+
+      - name: Lint mobile
+        if: steps.detect.outputs.mobile == 'true'
+        run: npm run --workspace @pomodoro/mobile lint --if-present
+
+      - name: Test mobile
+        if: steps.detect.outputs.mobile == 'true'
+        run: npm run --workspace @pomodoro/mobile test:ci --if-present
