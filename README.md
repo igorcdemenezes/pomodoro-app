@@ -133,11 +133,17 @@ relation.
 npm run api start:dev      # watch mode on http://localhost:3000/api/v1
 ```
 
-| Endpoint             | Purpose                             |
-| -------------------- | ----------------------------------- |
-| `GET /api/v1/health` | Liveness probe                      |
-| `GET /api/docs`      | Swagger UI, generated from the code |
-| `GET /api/docs-json` | OpenAPI document                    |
+| Endpoint                     | Purpose                                               |
+| ---------------------------- | ----------------------------------------------------- |
+| `POST /api/v1/auth/register` | Create an account and sign in                         |
+| `POST /api/v1/auth/login`    | Exchange credentials for tokens                       |
+| `POST /api/v1/auth/refresh`  | Rotate the refresh token                              |
+| `POST /api/v1/auth/logout`   | Sign out the current device                           |
+| `GET /api/v1/me`             | Profile and Pomodoro preferences                      |
+| `PATCH /api/v1/me`           | Update name and default durations                     |
+| `GET /api/v1/health`         | Readiness probe, 503 when the database is unreachable |
+| `GET /api/docs`              | Swagger UI, generated from the code                   |
+| `GET /api/docs-json`         | OpenAPI document                                      |
 
 | Script                  | Purpose                         |
 | ----------------------- | ------------------------------- |
@@ -150,6 +156,37 @@ npm run api start:dev      # watch mode on http://localhost:3000/api/v1
 Every route sits behind the `/api/v1` prefix. Requests are validated by a global
 pipe with `whitelist` and `forbidNonWhitelisted` enabled, so a payload carrying
 fields the DTO never declared is rejected rather than silently trimmed.
+
+### Authentication
+
+Authentication is **on by default**: a guard is registered globally and routes
+opt out with `@Public()`. Forgetting a decorator leaves an endpoint closed
+rather than open.
+
+| Token   | Form                         | Lifetime | Notes                                                                                |
+| ------- | ---------------------------- | -------- | ------------------------------------------------------------------------------------ |
+| Access  | JWT, `Authorization: Bearer` | 15 min   | Stateless; carries the user id                                                       |
+| Refresh | Opaque random bytes          | 30 days  | Only its SHA-256 hash is stored, so a database leak does not hand over live sessions |
+
+Refresh tokens **rotate**: each use revokes the presented token and issues a new
+one, inside a transaction so a crash cannot leave both valid.
+
+Replaying a token already retired **by rotation** means it leaked, so every
+session for that user ends. A token retired by an explicit **logout** is
+different — a client retrying is not evidence of theft — so it is simply
+rejected. The database records which of the two happened, and a CHECK constraint
+keeps the reason and the revocation timestamp in step.
+
+Passwords use scrypt from `node:crypto`. Login hashes a dummy value when the
+email is unknown, so response time does not reveal which addresses are
+registered.
+
+Set `JWT_SECRET` to at least 32 characters — the API validates its configuration
+at boot and refuses to start otherwise:
+
+```bash
+openssl rand -base64 48
+```
 
 ## Contributing
 
