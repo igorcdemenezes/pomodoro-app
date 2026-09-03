@@ -72,7 +72,32 @@ npm run db:psql -- -c '\l'       # lists pomodoro and pomodoro_test
 Data lives in the named volume `pomodoro-pgdata`, so it survives
 `npm run db:down` and machine restarts. Only `npm run db:reset` discards it.
 
-Schema and migrations arrive with the backend, under `apps/api/prisma`.
+Schema and migrations arrive with the schema pull request, under
+`apps/api/prisma`.
+
+### Backend
+
+```bash
+npm run api start:dev      # watch mode on http://localhost:3000/api/v1
+```
+
+| Endpoint             | Purpose                             |
+| -------------------- | ----------------------------------- |
+| `GET /api/v1/health` | Liveness probe                      |
+| `GET /api/docs`      | Swagger UI, generated from the code |
+| `GET /api/docs-json` | OpenAPI document                    |
+
+| Script                  | Purpose                         |
+| ----------------------- | ------------------------------- |
+| `npm run api start:dev` | Start the API in watch mode     |
+| `npm run api build`     | Compile to `apps/api/dist`      |
+| `npm run api lint`      | Lint the backend                |
+| `npm run api typecheck` | Type-check without emitting     |
+| `npm run api test`      | Run unit and integration suites |
+
+Every route sits behind the `/api/v1` prefix. Requests are validated by a global
+pipe with `whitelist` and `forbidNonWhitelisted` enabled, so a payload carrying
+fields the DTO never declared is rejected rather than silently trimmed.
 
 ## Contributing
 
