@@ -265,6 +265,49 @@ the Pomodoro sessions recorded against them; the foreign keys detach the history
 rather than cascading it away. Focus time already spent is a fact, and tidying
 up a board must not rewrite it.
 
+## Running the whole stack
+
+```bash
+cp .env.example .env
+# JWT_SECRET must be at least 32 characters
+docker compose up -d --build
+curl localhost:3000/api/v1/health
+```
+
+Brings up PostgreSQL and the API together, with migrations applied on start —
+the fastest way to evaluate the project without a Node toolchain installed. Day
+to day, `npm run api start:dev` on the host is better, because it watches.
+
+The image is multi-stage: the build tree is discarded and the runtime carries
+only compiled output plus production dependencies. `prisma` is a runtime
+dependency rather than a development one, deliberately: migrations are applied
+by the entrypoint when the container starts, and `migrate deploy` needs the CLI.
+
+`migrate deploy` only applies migrations already committed to the repository —
+it never generates one and never resets — so running it on every boot is safe
+and idempotent when several instances start at once.
+
+## Deployment
+
+The API deploys from `railway.json`, which points Railway at the same Dockerfile
+used above and sets `/api/v1/health` as the health check, so a container whose
+database is unreachable is never routed traffic.
+
+Required variables on the service:
+
+| Variable       | Notes                                             |
+| -------------- | ------------------------------------------------- |
+| `DATABASE_URL` | Reference the Railway PostgreSQL plugin           |
+| `JWT_SECRET`   | At least 32 characters; `openssl rand -base64 48` |
+| `PORT`         | Injected by the platform                          |
+
+```bash
+railway login
+railway init
+railway add --database postgres
+railway up
+```
+
 ## Contributing
 
 Branches are short-lived and every change reaches `main` through a pull request.
