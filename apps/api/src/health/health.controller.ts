@@ -7,6 +7,7 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 
+import { Public } from '../common/decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { HealthResponseDto } from './dto/health-response.dto';
 
@@ -15,6 +16,7 @@ import { HealthResponseDto } from './dto/health-response.dto';
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
+  @Public()
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
