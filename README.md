@@ -133,17 +133,20 @@ relation.
 npm run api start:dev      # watch mode on http://localhost:3000/api/v1
 ```
 
-| Endpoint                     | Purpose                                               |
-| ---------------------------- | ----------------------------------------------------- |
-| `POST /api/v1/auth/register` | Create an account and sign in                         |
-| `POST /api/v1/auth/login`    | Exchange credentials for tokens                       |
-| `POST /api/v1/auth/refresh`  | Rotate the refresh token                              |
-| `POST /api/v1/auth/logout`   | Sign out the current device                           |
-| `GET /api/v1/me`             | Profile and Pomodoro preferences                      |
-| `PATCH /api/v1/me`           | Update name and default durations                     |
-| `GET /api/v1/health`         | Readiness probe, 503 when the database is unreachable |
-| `GET /api/docs`              | Swagger UI, generated from the code                   |
-| `GET /api/docs-json`         | OpenAPI document                                      |
+| Endpoint                                    | Purpose                                               |
+| ------------------------------------------- | ----------------------------------------------------- |
+| `POST /api/v1/auth/register`                | Create an account and sign in                         |
+| `POST /api/v1/auth/login`                   | Exchange credentials for tokens                       |
+| `POST /api/v1/auth/refresh`                 | Rotate the refresh token                              |
+| `POST /api/v1/auth/logout`                  | Sign out the current device                           |
+| `GET` `PATCH /api/v1/me`                    | Profile and Pomodoro preferences                      |
+| `GET` `POST /api/v1/projects`               | List and create projects                              |
+| `GET` `PATCH` `DELETE /api/v1/projects/:id` | Read, update, archive                                 |
+| `GET` `POST /api/v1/tasks`                  | List (filter by `projectId`, `status`) and create     |
+| `GET` `PATCH` `DELETE /api/v1/tasks/:id`    | Read, update, delete                                  |
+| `GET /api/v1/health`                        | Readiness probe, 503 when the database is unreachable |
+| `GET /api/docs`                             | Swagger UI, generated from the code                   |
+| `GET /api/docs-json`                        | OpenAPI document                                      |
 
 | Script                  | Purpose                         |
 | ----------------------- | ------------------------------- |
@@ -187,6 +190,17 @@ at boot and refuses to start otherwise:
 ```bash
 openssl rand -base64 48
 ```
+
+### Ownership
+
+Every query is scoped by the owner: `where: { id, userId }`, never `where: { id }`.
+A resource belonging to someone else answers **404, not 403** — a 403 would
+confirm the id exists.
+
+Deletion is asymmetric on purpose. Archiving a project or deleting a task keeps
+the Pomodoro sessions recorded against them; the foreign keys detach the history
+rather than cascading it away. Focus time already spent is a fact, and tidying
+up a board must not rewrite it.
 
 ## Contributing
 
