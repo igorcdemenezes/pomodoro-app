@@ -22,12 +22,17 @@
     "test": "dotenv -e ../../.env -- jest",
     "test:watch": "dotenv -e ../../.env -- jest --watch",
     "test:cov": "dotenv -e ../../.env -- jest --coverage",
-    "test:ci": "dotenv -e ../../.env -- jest --ci --runInBand"
+    "test:ci": "dotenv -e ../../.env -- jest --ci --runInBand",
+    "migrate:test": "dotenv -e ../../.env -- node scripts/migrate-test.mjs",
+    "pretest": "npm run migrate:test",
+    "pretest:ci": "npm run migrate:test",
+    "pretest:cov": "npm run migrate:test"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",
+    "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/swagger": "^11.0.0",
     "@prisma/client": "^6.19.3",

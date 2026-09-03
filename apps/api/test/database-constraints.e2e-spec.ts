@@ -189,6 +189,38 @@ describe('Database constraints', () => {
     });
   });
 
+  describe('refresh tokens', () => {
+    it('refuses a revoked token without a reason', async () => {
+      const user = await createUser('token@example.com');
+
+      await expect(
+        prisma.refreshToken.create({
+          data: {
+            userId: user.id,
+            tokenHash: 'hash-1',
+            expiresAt: new Date(Date.now() + 1000),
+            revokedAt: new Date(),
+          },
+        }),
+      ).rejects.toThrow(/refresh_token_reason_matches_revocation/);
+    });
+
+    it('refuses a live token that carries a reason', async () => {
+      const user = await createUser('token2@example.com');
+
+      await expect(
+        prisma.refreshToken.create({
+          data: {
+            userId: user.id,
+            tokenHash: 'hash-2',
+            expiresAt: new Date(Date.now() + 1000),
+            revokedReason: 'LOGOUT',
+          },
+        }),
+      ).rejects.toThrow(/refresh_token_reason_matches_revocation/);
+    });
+  });
+
   describe('users', () => {
     it('refuses a non-lowercase email', async () => {
       await expect(createUser('MiXeD@example.com')).rejects.toThrow(/user_email_lowercase/);
