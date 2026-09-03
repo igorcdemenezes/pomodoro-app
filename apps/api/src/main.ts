@@ -5,6 +5,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 
 import { AppModule } from './app.module';
+import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 
 const API_PREFIX = 'api/v1';
 const DOCS_PATH = 'api/docs';
@@ -16,6 +17,10 @@ async function bootstrap() {
   app.use(helmet());
   app.enableCors({ origin: true });
   app.enableShutdownHooks();
+
+  // Database constraint violations are expected control flow in this domain,
+  // so they become HTTP semantics instead of 500s.
+  app.useGlobalFilters(new PrismaExceptionFilter());
 
   app.useGlobalPipes(
     new ValidationPipe({

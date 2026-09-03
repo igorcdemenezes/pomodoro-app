@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { UsersModule } from './users/users.module';
+import { validateEnv } from './config/env.validation';
 
 @Module({
   imports: [
@@ -12,8 +15,13 @@ import { PrismaModule } from './prisma/prisma.module';
       // API and the database never disagree about credentials.
       envFilePath: ['../../.env', '.env'],
       cache: true,
+      // A missing or weak JWT secret stops the process at boot rather than
+      // surfacing later as an authentication bug.
+      validate: validateEnv,
     }),
     PrismaModule,
+    AuthModule,
+    UsersModule,
     HealthModule,
   ],
 })
