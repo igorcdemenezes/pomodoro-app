@@ -143,6 +143,7 @@ npm run api start:dev      # watch mode on http://localhost:3000/api/v1
 | `GET /api/v1/sessions/active`                                   | The session to render; 204 when there is none         |
 | `PATCH /api/v1/sessions/:id/pause` `resume` `complete` `cancel` | State transitions                                     |
 | `GET /api/v1/sessions`                                          | Finished sessions, cursor-paginated                   |
+| `GET /api/v1/stats/summary` `daily` `by-project`                | Productivity metrics, aggregated in SQL               |
 | `GET /api/v1/health`                                            | Readiness probe, 503 when the database is unreachable |
 | `GET /api/docs` `docs-json`                                     | Swagger UI and the OpenAPI document                   |
 
@@ -229,6 +230,29 @@ Three independent mechanisms keep "one session at a time" true:
 2. The service refuses to start while another session is active.
 3. The **partial unique index** refuses it again at the database — which is what
    holds when two devices race and both pass step 2.
+
+### Metrics
+
+Every figure is aggregated in SQL. No endpoint returns rows for the client to
+sum: the client must not be able to disagree with the server about how much
+focus time a user has, and pulling a year of sessions over the wire to add them
+up would be wrong twice over.
+
+Two decisions worth stating:
+
+**Focused time is time actually run** — `endedAt − startedAt − pausedAccumulated`
+— not the nominal `durationSec`. A session finished early counts for what it was
+worth, and time spent paused is not counted as focus.
+
+**Days belong to a time zone.** `?timeZone=America/Sao_Paulo` decides which
+calendar day a session falls on; without it a 22:00 session would land on the
+following day. The daily series fills empty days with zeros through
+`generate_series`, so a chart has no holes.
+
+The streak query groups days by the gap between the date and its row number,
+which is constant inside a run of consecutive days — so "days in a row ending
+today" is one grouped query rather than a loop over every day since sign-up. A
+streak survives today being empty and counts up to yesterday.
 
 ### Ownership
 
