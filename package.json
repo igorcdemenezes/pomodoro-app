@@ -1,0 +1,31 @@
+{
+  "name": "pomodoro-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pomodoro productivity app: React Native client backed by a NestJS API and PostgreSQL",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "api": "npm run --workspace @pomodoro/api",
+    "mobile": "npm run --workspace @pomodoro/mobile",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.3.0",
+    "prettier": "^3.4.2"
+  },
+  "lint-staged": {
+    "*.{json,md,yml,yaml}": "prettier --write",
+    "*.{js,jsx,ts,tsx}": "prettier --write"
+  }
+}
