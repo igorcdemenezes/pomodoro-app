@@ -35,6 +35,45 @@ business rules such as whether a focus session may start.
 | `apps/mobile` | Expo client                                                            |
 | `docs`        | Technical plan and design notes                                        |
 
+## Getting started
+
+### Requirements
+
+- Node.js 24 (see `.nvmrc`)
+- Docker with Compose v2
+
+### Database
+
+The database runs in Docker and is the only piece needed before the backend
+exists. First start also provisions a separate `pomodoro_test` database used by
+the integration test suite.
+
+```bash
+cp .env.example .env   # adjust credentials if you like
+npm install            # workspace dependencies and git hooks
+npm run db:up          # starts PostgreSQL 16 and waits for it to be healthy
+```
+
+Verify it is accepting connections:
+
+```bash
+docker compose ps                # postgres should report (healthy)
+npm run db:psql -- -c '\l'       # lists pomodoro and pomodoro_test
+```
+
+| Script             | Purpose                                             |
+| ------------------ | --------------------------------------------------- |
+| `npm run db:up`    | Start PostgreSQL in the background                  |
+| `npm run db:down`  | Stop the container, keeping the data volume         |
+| `npm run db:reset` | Destroy the volume and start from an empty database |
+| `npm run db:logs`  | Follow the database logs                            |
+| `npm run db:psql`  | Open a `psql` shell inside the container            |
+
+Data lives in the named volume `pomodoro-pgdata`, so it survives
+`npm run db:down` and machine restarts. Only `npm run db:reset` discards it.
+
+Schema and migrations arrive with the backend, under `apps/api/prisma`.
+
 ## Contributing
 
 Branches are short-lived and every change reaches `main` through a pull request.
