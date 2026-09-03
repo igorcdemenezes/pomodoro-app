@@ -36,6 +36,17 @@ enum SessionKind {
   LONG_BREAK
 }
 
+/// Why a refresh token stopped being valid.
+///
+/// Reuse detection must only be armed for tokens retired by rotation. A token
+/// retired by an explicit logout being presented again is a client retrying,
+/// not evidence of theft, and must not end the user's other sessions.
+enum RefreshTokenRevokedReason {
+  ROTATED
+  LOGOUT
+  REUSE_DETECTED
+}
+
 enum SessionStatus {
   RUNNING
   PAUSED
@@ -70,7 +81,7 @@ model Project {
   id     String @id @default(uuid(7)) @db.Uuid
   userId String @map("user_id") @db.Uuid
 
-  name String @db.VarChar(120)
+  name  String @db.VarChar(120)
   /// Hex colour used by the client, e.g. #E5484D.
   color String @default("#6E56CF") @map("color") @db.VarChar(7)
 
@@ -120,14 +131,14 @@ model PomodoroSession {
   kind   SessionKind
   status SessionStatus
 
-  startedAt   DateTime  @map("started_at") @db.Timestamptz(3)
-  durationSec Int       @map("duration_sec")
+  startedAt           DateTime  @map("started_at") @db.Timestamptz(3)
+  durationSec         Int       @map("duration_sec")
   /// Set only while the session is PAUSED; cleared on resume.
-  pausedAt    DateTime? @map("paused_at") @db.Timestamptz(3)
+  pausedAt            DateTime? @map("paused_at") @db.Timestamptz(3)
   /// Total time already spent paused, so elapsed time excludes it.
-  pausedAccumulatedMs Int @default(0) @map("paused_accumulated_ms")
+  pausedAccumulatedMs Int       @default(0) @map("paused_accumulated_ms")
   /// Set only once the session reached COMPLETED or CANCELLED.
-  endedAt     DateTime? @map("ended_at") @db.Timestamptz(3)
+  endedAt             DateTime? @map("ended_at") @db.Timestamptz(3)
 
   /// Client-generated idempotency key. A retried start request after a dropped
   /// connection resolves to the same session instead of a duplicate.
@@ -152,9 +163,10 @@ model RefreshToken {
   /// Only the hash is stored; the opaque token itself never touches the database.
   tokenHash String @unique @map("token_hash")
 
-  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3)
-  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(3)
-  deviceLabel String?   @map("device_label") @db.VarChar(120)
+  expiresAt     DateTime                   @map("expires_at") @db.Timestamptz(3)
+  revokedAt     DateTime?                  @map("revoked_at") @db.Timestamptz(3)
+  revokedReason RefreshTokenRevokedReason? @map("revoked_reason")
+  deviceLabel   String?                    @map("device_label") @db.VarChar(120)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
