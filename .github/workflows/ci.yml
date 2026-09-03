@@ -87,6 +87,10 @@ jobs:
         if: steps.detect.outputs.mobile == 'true'
         run: npm run --workspace @pomodoro/mobile lint --if-present
 
+      - name: Type-check mobile
+        if: steps.detect.outputs.mobile == 'true'
+        run: npm run --workspace @pomodoro/mobile typecheck --if-present
+
       - name: Test mobile
         if: steps.detect.outputs.mobile == 'true'
         run: npm run --workspace @pomodoro/mobile test:ci --if-present
