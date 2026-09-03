@@ -6,6 +6,7 @@ import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
 import { SessionsModule } from './sessions/sessions.module';
+import { StatsModule } from './stats/stats.module';
 import { TasksModule } from './tasks/tasks.module';
 import { UsersModule } from './users/users.module';
 import { validateEnv } from './config/env.validation';
@@ -28,6 +29,7 @@ import { validateEnv } from './config/env.validation';
     ProjectsModule,
     TasksModule,
     SessionsModule,
+    StatsModule,
     HealthModule,
   ],
 })
