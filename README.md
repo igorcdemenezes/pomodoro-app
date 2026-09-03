@@ -133,20 +133,18 @@ relation.
 npm run api start:dev      # watch mode on http://localhost:3000/api/v1
 ```
 
-| Endpoint                                    | Purpose                                               |
-| ------------------------------------------- | ----------------------------------------------------- |
-| `POST /api/v1/auth/register`                | Create an account and sign in                         |
-| `POST /api/v1/auth/login`                   | Exchange credentials for tokens                       |
-| `POST /api/v1/auth/refresh`                 | Rotate the refresh token                              |
-| `POST /api/v1/auth/logout`                  | Sign out the current device                           |
-| `GET` `PATCH /api/v1/me`                    | Profile and Pomodoro preferences                      |
-| `GET` `POST /api/v1/projects`               | List and create projects                              |
-| `GET` `PATCH` `DELETE /api/v1/projects/:id` | Read, update, archive                                 |
-| `GET` `POST /api/v1/tasks`                  | List (filter by `projectId`, `status`) and create     |
-| `GET` `PATCH` `DELETE /api/v1/tasks/:id`    | Read, update, delete                                  |
-| `GET /api/v1/health`                        | Readiness probe, 503 when the database is unreachable |
-| `GET /api/docs`                             | Swagger UI, generated from the code                   |
-| `GET /api/docs-json`                        | OpenAPI document                                      |
+| Endpoint                                                        | Purpose                                               |
+| --------------------------------------------------------------- | ----------------------------------------------------- |
+| `POST /api/v1/auth/register` `login` `refresh` `logout`         | Account and session lifecycle                         |
+| `GET` `PATCH /api/v1/me`                                        | Profile and Pomodoro preferences                      |
+| `GET` `POST /api/v1/projects` · `GET` `PATCH` `DELETE /:id`     | Projects; delete archives                             |
+| `GET` `POST /api/v1/tasks` · `GET` `PATCH` `DELETE /:id`        | Tasks; filter by `projectId`, `status`                |
+| `POST /api/v1/sessions/start`                                   | Start a session; 409 while one is active              |
+| `GET /api/v1/sessions/active`                                   | The session to render; 204 when there is none         |
+| `PATCH /api/v1/sessions/:id/pause` `resume` `complete` `cancel` | State transitions                                     |
+| `GET /api/v1/sessions`                                          | Finished sessions, cursor-paginated                   |
+| `GET /api/v1/health`                                            | Readiness probe, 503 when the database is unreachable |
+| `GET /api/docs` `docs-json`                                     | Swagger UI and the OpenAPI document                   |
 
 | Script                  | Purpose                         |
 | ----------------------- | ------------------------------- |
@@ -190,6 +188,47 @@ at boot and refuses to start otherwise:
 ```bash
 openssl rand -base64 48
 ```
+
+### Pomodoro sessions
+
+A session stores **when it began**, **how long it should last** and **how long it
+has been paused**. It never stores a mutable "time remaining":
+
+```
+elapsed   = (now or pausedAt or endedAt) − startedAt − pausedAccumulatedMs
+remaining = max(0, durationSec × 1000 − elapsed)
+```
+
+There is no state to synchronise, only a shared calculation over persisted
+instants — which is why the three scenarios the brief asks about are correct by
+construction rather than by reconciliation logic:
+
+| Scenario                   | What happens                                                                                       |
+| -------------------------- | -------------------------------------------------------------------------------------------------- |
+| App closed and reopened    | `GET /sessions/active` returns the session; the client recomputes the countdown                    |
+| Backend restarted          | Nothing was held in memory to lose                                                                 |
+| Opened on another device   | Same query, same answer                                                                            |
+| Deadline passed while away | The session is settled as `COMPLETED`, ended at the **deadline**, not at the moment it was noticed |
+
+Every session payload carries `serverTime`. Clients measure the offset against
+their own clock and apply it, so a device with the wrong time still counts down
+correctly.
+
+```
+[*] ──▶ RUNNING ⇄ PAUSED ──▶ COMPLETED
+             └──────┴───────▶ CANCELLED
+```
+
+An invalid transition answers **409** with the current status attached, so the
+client reconciles instead of retrying blindly.
+
+Three independent mechanisms keep "one session at a time" true:
+
+1. `clientMutationId` makes a retried start after a dropped connection resolve
+   to the same session instead of a second one.
+2. The service refuses to start while another session is active.
+3. The **partial unique index** refuses it again at the database — which is what
+   holds when two devices race and both pass step 2.
 
 ### Ownership
 
