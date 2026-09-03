@@ -77,8 +77,55 @@ development machine often already has something bound to 5432. Override
 `POSTGRES_PORT` in `.env` if 5433 is taken too — remember to update
 `DATABASE_URL` and `TEST_DATABASE_URL` to match.
 
-Schema and migrations arrive with the schema pull request, under
-`apps/api/prisma`.
+### Schema and migrations
+
+```bash
+npm run api migrate:deploy   # apply migrations
+npm run api generate         # regenerate the Prisma client
+npm run api seed             # demo account with two weeks of history
+npm run api migrate:status   # what is applied and what is pending
+npm run api studio           # browse the data
+```
+
+The seed creates `demo@pomodoro.app` / `demo1234` with projects, tasks and
+enough session history for the dashboard and statistics screens to render
+something meaningful.
+
+Migrations live in `apps/api/prisma/migrations` and are applied in order:
+
+| Migration                | Contents                                                                                                        |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `init`                   | Tables, enums, primary and foreign keys, indexes generated from the Prisma schema                               |
+| `add_domain_constraints` | Partial unique indexes, expression indexes and CHECK constraints that the Prisma schema language cannot express |
+
+The second migration is where the domain invariants live. The one that matters
+most:
+
+```sql
+CREATE UNIQUE INDEX "one_active_session_per_user"
+    ON "pomodoro_sessions" ("user_id")
+    WHERE "status" IN ('RUNNING', 'PAUSED');
+```
+
+The service checks for an active session before inserting, but two concurrent
+requests can both pass that check. The index makes the loser of the race fail
+with `23505`, which the API returns as `409 Conflict`. The rule holds even
+against a direct `psql` session.
+
+### Data model
+
+| Entity            | Notes                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------- |
+| `User`            | Credentials and the durations used when a session starts without an explicit one                  |
+| `Project`         | Soft-archived, so focus time recorded against its tasks is never erased                           |
+| `Task`            | Optionally belongs to a project; detached rather than deleted when the project goes               |
+| `PomodoroSession` | Stores `started_at`, `duration_sec` and accumulated pause time — never a mutable "time remaining" |
+| `RefreshToken`    | Only the hash is stored; supports per-device logout                                               |
+
+`userId` is denormalised onto `Task` and `PomodoroSession` even though it is
+reachable through `Project`. Every read is scoped to its owner with no join, so
+a missing authorisation scope is visible in review rather than hidden behind a
+relation.
 
 ### Backend
 
