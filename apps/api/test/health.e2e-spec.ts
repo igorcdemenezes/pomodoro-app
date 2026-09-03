@@ -21,10 +21,10 @@ describe('Health (e2e)', () => {
     await app.close();
   });
 
-  it('reports the service as healthy', async () => {
+  it('reports the service as healthy with a reachable database', async () => {
     const response = await request(app.getHttpServer()).get('/api/v1/health').expect(200);
 
-    expect(response.body).toMatchObject({ status: 'ok' });
+    expect(response.body).toMatchObject({ status: 'ok', database: 'up' });
     expect(response.body.uptimeSeconds).toBeGreaterThanOrEqual(0);
     expect(Date.parse(response.body.timestamp)).not.toBeNaN();
   });

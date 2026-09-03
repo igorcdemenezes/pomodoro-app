@@ -9,6 +9,8 @@
 export default {
   rootDir: '.',
   testEnvironment: 'node',
+  setupFiles: ['<rootDir>/test/setup-env.ts'],
+  testTimeout: 20000,
   moduleFileExtensions: ['js', 'json', 'ts'],
   testRegex: '.*\\.(spec|e2e-spec)\\.ts$',
   transform: {
