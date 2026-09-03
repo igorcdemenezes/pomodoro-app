@@ -1,4 +1,9 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+  // Only src is compiled for production. Including prisma/ or scripts/ here
+  // would widen the inferred rootDir and emit dist/src/main.js instead of
+  // dist/main.js, breaking `start:prod`. They stay in tsconfig.json so the
+  // seed and tooling are still type-checked and linted.
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "test", "dist", "prisma", "scripts", "**/*spec.ts"]
 }
