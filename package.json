@@ -13,6 +13,11 @@
   "scripts": {
     "api": "npm run --workspace @pomodoro/api",
     "mobile": "npm run --workspace @pomodoro/mobile",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d postgres",
+    "db:logs": "docker compose logs -f postgres",
+    "db:psql": "docker compose exec postgres psql -U ${POSTGRES_USER:-pomodoro} -d ${POSTGRES_DB:-pomodoro}",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky"
