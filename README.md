@@ -25,7 +25,7 @@ business rules such as whether a focus session may start.
 | Mobile         | React Native (Expo), TypeScript, Expo Router, TanStack Query |
 | Backend        | NestJS, TypeScript, Prisma, Swagger                          |
 | Database       | PostgreSQL 16                                                |
-| Infrastructure | Docker Compose (local), Railway (hosted API)                 |
+| Infrastructure | Docker Compose                                               |
 
 ## Repository layout
 
@@ -287,26 +287,29 @@ by the entrypoint when the container starts, and `migrate deploy` needs the CLI.
 it never generates one and never resets — so running it on every boot is safe
 and idempotent when several instances start at once.
 
-## Deployment
+## Pointing the app at a backend
 
-The API deploys from `railway.json`, which points Railway at the same Dockerfile
-used above and sets `/api/v1/health` as the health check, so a container whose
-database is unreachable is never routed traffic.
+The API address is configuration, not a constant: the mobile client reads it
+from a build-time variable and exposes it on the profile screen, so the same
+build works against a machine on the local network, a colleague's host, or a
+hosted instance.
 
-Required variables on the service:
-
-| Variable       | Notes                                             |
-| -------------- | ------------------------------------------------- |
-| `DATABASE_URL` | Reference the Railway PostgreSQL plugin           |
-| `JWT_SECRET`   | At least 32 characters; `openssl rand -base64 48` |
-| `PORT`         | Injected by the platform                          |
+To evaluate on a physical device, run the stack and point the app at the host
+machine:
 
 ```bash
-railway login
-railway init
-railway add --database postgres
-railway up
+docker compose up -d --build
+hostname -I | awk '{print $1}'   # e.g. 192.168.0.42
 ```
+
+Then set the API base URL in the app to `http://192.168.0.42:3000/api/v1`, with
+the device on the same network.
+
+The brief asks for instructions to run the project and a clear way to evaluate
+it, not for a hosted environment, so there is no deployment step to reproduce.
+The image built here is a plain OCI container with no platform-specific
+configuration: any host that runs containers will serve it, given `DATABASE_URL`
+and `JWT_SECRET`.
 
 ## Contributing
 

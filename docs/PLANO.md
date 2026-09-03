@@ -6,7 +6,7 @@
 
 - **Prazo:** < 3 dias
 - **Data de início:** 2026-09-03
-- **Entrega:** monorepo com `apps/api` (NestJS) + `apps/mobile` (Expo) + APK instalável + API pública
+- **Entrega:** monorepo com `apps/api` (NestJS) + `apps/mobile` (Expo) + APK instalável + vídeo de demonstração
 
 ---
 
@@ -39,7 +39,7 @@ A premissa que dirige todo o desenho:
 | ORM / Migrations   | **Prisma**                                        | Migrations versionadas e reproduzíveis (`prisma migrate`), tipagem ponta a ponta, `$transaction` para operações atômicas.                                                                                                                                                   |
 | Banco              | **PostgreSQL 16**                                 | Chaves estrangeiras reais, `CHECK`, _unique index_ parcial, transações e agregações SQL para as métricas. É o banco que permite **provar no schema** a regra de sessão única — algo que um banco de documentos não expressaria.                                             |
 | Infra local        | **docker-compose**                                | `docker compose up` sobe Postgres + API; requisito de "instruções para criar e executar o banco localmente" atendido em um comando.                                                                                                                                         |
-| Deploy             | **Railway** (API + Postgres gerenciado)           | O APK entregue aponta para uma URL pública: o avaliador instala e usa, sem subir nada localmente.                                                                                                                                                                           |
+| Distribuição       | **APK + `docker compose up`**                     | O enunciado pede instruções de execução e uma forma clara de avaliar, não um ambiente hospedado. O app lê o endereço da API de configuração, então o avaliador aponta o build para a própria máquina. Hospedar continua possível — a imagem é um container OCI comum.       |
 
 ### Alternativas descartadas
 
@@ -377,7 +377,7 @@ isolamento entre usuários), não distribuída uniformemente.
 - [ ] Módulo de métricas (SQL agregado)
 - [ ] Swagger, filtro global de exceções, seed
 - [ ] Testes e2e prioritários (casos 1–4)
-- [ ] Deploy no Railway com migrations aplicadas no boot
+- [ ] Imagem de produção com migrations aplicadas no boot
 
 ### Dia 2 — Aplicativo: núcleo
 
@@ -400,12 +400,12 @@ isolamento entre usuários), não distribuída uniformemente.
 
 ## 12. Riscos e mitigações
 
-| Risco                                              | Mitigação                                                                                                                       |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Build EAS falhar ou demorar perto do prazo         | Disparar um build de teste ainda no Dia 1, com o app mínimo.                                                                    |
-| Timer divergir entre servidor e app                | `serverTime` no payload + cálculo de _offset_; nunca contar a partir do relógio local isolado.                                  |
-| Escopo das 9 telas estourar o prazo                | Backend inteiro pronto no Dia 1; telas construídas por ordem de peso na avaliação (Pomodoro > Projetos/Tarefas > Estatísticas). |
-| Cold start do free tier do Railway na demonstração | Documentar no README e manter o `docker compose up` como caminho alternativo garantido.                                         |
+| Risco                                                   | Mitigação                                                                                                                                        |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Build EAS falhar ou demorar perto do prazo              | Disparar um build de teste ainda no Dia 1, com o app mínimo.                                                                                     |
+| Timer divergir entre servidor e app                     | `serverTime` no payload + cálculo de _offset_; nunca contar a partir do relógio local isolado.                                                   |
+| Escopo das 9 telas estourar o prazo                     | Backend inteiro pronto no Dia 1; telas construídas por ordem de peso na avaliação (Pomodoro > Projetos/Tarefas > Estatísticas).                  |
+| Avaliador sem conseguir alcançar a API pelo dispositivo | Endereço da API configurável no app, `network security config` para HTTP em rede local desde o bootstrap, e vídeo de demonstração como garantia. |
 
 ---
 
@@ -419,4 +419,4 @@ isolamento entre usuários), não distribuída uniformemente.
 - [ ] Estratégia de testes — seção do README (resumo da seção 10)
 - [ ] Explicação da arquitetura — seção do README (resumo das seções 3–5)
 - [ ] Justificativa das tecnologias — seção do README (resumo da seção 2)
-- [ ] Forma de avaliar: **APK** + API pública + vídeo de demonstração
+- [ ] Forma de avaliar: **APK** + `docker compose up` + vídeo de demonstração
