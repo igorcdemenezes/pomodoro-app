@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
+import { resetServerClock } from '../api/server-clock';
+
 /**
  * Where the API lives.
  *
@@ -46,11 +48,13 @@ export async function setApiBaseUrl(url: string): Promise<void> {
   const normalised = normaliseBaseUrl(url);
 
   cached = normalised;
+  resetServerClock();
   await AsyncStorage.setItem(STORAGE_KEY, normalised);
 }
 
 export async function resetApiBaseUrl(): Promise<void> {
   cached = configuredDefault();
+  resetServerClock();
   await AsyncStorage.removeItem(STORAGE_KEY);
 }
 
