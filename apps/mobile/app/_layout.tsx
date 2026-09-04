@@ -7,6 +7,7 @@ import { PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useAuthStore } from '../src/auth/auth-store';
+import { startFocusManager } from '../src/net/app-focus';
 import { startOnlineManager } from '../src/net/online-manager';
 import { queryClient, queryPersister } from '../src/query/query-client';
 import { themes } from '../src/theme/theme';
@@ -18,10 +19,12 @@ export default function RootLayout() {
   const theme = scheme === 'dark' ? themes.dark : themes.light;
   const hydrate = useAuthStore((state) => state.hydrate);
 
-  // Registered once for the process: React Query otherwise assumes a browser
-  // and never learns the connection dropped.
+  // Registered once for the process: React Query otherwise assumes a browser,
+  // and never learns that the connection dropped or that the app was put away.
   useEffect(() => {
     startOnlineManager();
+
+    return startFocusManager();
   }, []);
 
   // Reading the keystore is what makes a returning user land in the app rather

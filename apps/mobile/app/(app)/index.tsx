@@ -66,8 +66,14 @@ export default function HomeScreen() {
         </Card.Content>
       </Card>
 
+      <Link href="/(app)/focus" asChild>
+        <Button mode="contained" icon="play">
+          Start a session
+        </Button>
+      </Link>
+
       <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-        Projects, tasks and the timer land here next.
+        Projects, tasks and statistics land here next.
       </Text>
 
       <Link href="/server-settings" asChild>
