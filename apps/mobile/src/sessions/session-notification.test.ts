@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 
 import { recordServerTime, resetServerClock } from '../api/server-clock';
 import type { Session } from './session-types';
+import type * as SessionNotification from './session-notification';
 import { scheduleSessionEnd } from './session-notification';
 
 jest.mock('expo-notifications', () => ({
@@ -94,5 +95,53 @@ describe('scheduling the end of a session', () => {
 
     expect(await scheduleSessionEnd(running())).toBeNull();
     expect(notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('a runtime that cannot hold the package', () => {
+  // Expo Go on Android throws from expo-notifications' own module scope, and
+  // Metro turns that into a red screen the app cannot catch. The module must
+  // therefore refuse to require it at all — this is the regression that took
+  // down the root layout and the focus screen.
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  afterEach(() => {
+    jest.resetModules();
+  });
+
+  // Asserting that this is never called is the point. Letting the require run
+  // and catching what it throws is not good enough: under Metro the throw never
+  // reaches the caller, it reaches the red screen.
+  const load = jest.fn();
+
+  function loadInExpoGoOnAndroid() {
+    load.mockClear();
+    jest.doMock('react-native', () => ({ Platform: { OS: 'android' } }));
+    jest.doMock('expo', () => ({ isRunningInExpoGo: () => true }));
+    jest.doMock('expo-notifications', () => {
+      load();
+      throw new Error('expo-notifications: removed from Expo Go');
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('./session-notification') as typeof SessionNotification;
+  }
+
+  it('never loads the package under Expo Go on Android', () => {
+    const module = loadInExpoGoOnAndroid();
+
+    module.startSessionNotifications();
+
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it('reports that nothing was booked instead of failing the screen', async () => {
+    const module = loadInExpoGoOnAndroid();
+
+    await expect(module.scheduleSessionEnd(running())).resolves.toBeNull();
+    await expect(module.cancelSessionEnd('notification-1')).resolves.toBeUndefined();
+    expect(load).not.toHaveBeenCalled();
   });
 });
