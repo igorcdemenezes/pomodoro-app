@@ -12,6 +12,8 @@ import { useActiveSession } from './use-active-session';
 import { useCountdown } from './use-countdown';
 import { useSessionEndNotification } from './use-session-notification';
 import { useSessionControls } from './use-session-controls';
+import { TaskPicker } from './task-picker';
+import { useTasks } from '../tasks/use-tasks';
 import { sessionColors } from '../theme/theme';
 import { Screen } from '../ui/screen';
 import { ErrorState, LoadingState } from '../ui/states';
@@ -45,7 +47,16 @@ export function FocusScreen() {
   useSessionEndNotification(session);
 
   const [kind, setKind] = useState<SessionKind>('FOCUS');
+  const [taskId, setTaskId] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Shares its cache entry with the tasks screen, so opening the timer after
+  // editing a task does not refetch the list.
+  const tasks = useTasks({});
+  const openTasks = (tasks.data ?? []).filter((task) => task.status !== 'DONE');
+  const linkedTask = session?.taskId
+    ? tasks.data?.find((task) => task.id === session.taskId)
+    : undefined;
 
   // Set when the user themselves ended the session, so the confirmation says
   // what happened rather than announcing that time ran out.
@@ -124,6 +135,12 @@ export function FocusScreen() {
         dimmed={!session}
       />
 
+      {linkedTask ? (
+        <Text variant="bodyMedium" style={styles.linked}>
+          {linkedTask.title}
+        </Text>
+      ) : null}
+
       {session ? (
         <View style={styles.controls}>
           {session.status === 'RUNNING' ? (
@@ -176,10 +193,21 @@ export function FocusScreen() {
             }))}
           />
 
+          {kind === 'FOCUS' ? (
+            <TaskPicker
+              tasks={openTasks}
+              value={taskId}
+              disabled={controls.pending}
+              onChange={setTaskId}
+            />
+          ) : null}
+
           <Button
             mode="contained"
             icon="play"
-            onPress={() => controls.start({ kind })}
+            onPress={() =>
+              controls.start({ kind, ...(kind === 'FOCUS' && taskId ? { taskId } : {}) })
+            }
             loading={controls.pending}
             disabled={controls.pending}
           >
@@ -229,5 +257,6 @@ function describe(code: string, message: string): string {
 
 const styles = StyleSheet.create({
   controls: { gap: 12, marginTop: 8 },
+  linked: { textAlign: 'center' },
   hint: { textAlign: 'center', marginTop: 4 },
 });
