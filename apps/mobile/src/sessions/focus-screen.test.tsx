@@ -3,13 +3,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PaperProvider } from 'react-native-paper';
 
 import { resetServerClock } from '../api/server-clock';
+import type { Task } from '../tasks/task-types';
 import type { Session } from './session-types';
+import * as tasksApi from '../tasks/tasks-api';
 import * as sessionNotification from './session-notification';
 import * as sessionsApi from './sessions-api';
 import { FocusScreen } from './focus-screen';
 
 jest.mock('./sessions-api');
 jest.mock('./session-notification');
+jest.mock('../tasks/tasks-api');
 jest.mock('expo-keep-awake', () => ({
   activateKeepAwakeAsync: jest.fn(() => Promise.resolve()),
   deactivateKeepAwake: jest.fn(() => Promise.resolve()),
@@ -18,6 +21,7 @@ jest.mock('expo-crypto', () => ({ randomUUID: () => 'ffffffff-0000-4000-8000-000
 
 const api = jest.mocked(sessionsApi);
 const notifier = jest.mocked(sessionNotification);
+const tasks = jest.mocked(tasksApi);
 
 const NOW = '2026-09-03T12:00:00.000Z';
 
@@ -34,6 +38,22 @@ function running(overrides: Partial<Session> = {}): Session {
     remainingSec: 1500,
     dueAt: '2026-09-03T12:15:00.000Z',
     serverTime: NOW,
+    ...overrides,
+  };
+}
+
+const TASK_ID = 'b1000000-0000-4000-8000-000000000001';
+
+function task(overrides: Partial<Task> = {}): Task {
+  return {
+    id: TASK_ID,
+    title: 'Write the ADR',
+    projectId: null,
+    status: 'TODO',
+    estimatedPomodoros: 4,
+    completedPomodoros: 1,
+    completedAt: null,
+    createdAt: '2026-09-02T09:00:00.000Z',
     ...overrides,
   };
 }
@@ -60,6 +80,7 @@ describe('focus screen', () => {
     resetServerClock();
     jest.useFakeTimers().setSystemTime(new Date(NOW));
     notifier.scheduleSessionEnd.mockResolvedValue('notification-1');
+    tasks.fetchTasks.mockResolvedValue([task()]);
   });
 
   afterEach(() => {
@@ -184,5 +205,40 @@ describe('focus screen', () => {
     expect(api.fetchActiveSession.mock.calls.length).toBeGreaterThan(1);
     expect(notifier.scheduleSessionEnd).toHaveBeenCalledTimes(1);
     expect(notifier.cancelSessionEnd).not.toHaveBeenCalled();
+  });
+  it('records the session against the task the user picked', async () => {
+    api.fetchActiveSession.mockResolvedValue(null);
+    api.startSession.mockResolvedValue(running({ taskId: TASK_ID }));
+
+    await renderScreen();
+
+    await fireEvent.press(await screen.findByLabelText('Choose a task'));
+    await fireEvent.press(await screen.findByText('Write the ADR'));
+    await fireEvent.press(screen.getByText('Start focus'));
+
+    await waitFor(() => expect(api.startSession).toHaveBeenCalled());
+    expect(api.startSession.mock.calls[0][0]).toEqual({
+      kind: 'FOCUS',
+      taskId: TASK_ID,
+      clientMutationId: 'ffffffff-0000-4000-8000-00000000000f',
+    });
+  });
+
+  it('names the task a running session belongs to', async () => {
+    api.fetchActiveSession.mockResolvedValue(running({ taskId: TASK_ID }));
+
+    await renderScreen();
+
+    expect(await screen.findByText('Write the ADR')).toBeOnTheScreen();
+  });
+
+  it('offers no task on a break, which is not work on anything', async () => {
+    api.fetchActiveSession.mockResolvedValue(null);
+
+    await renderScreen();
+
+    await fireEvent.press(await screen.findByText('Short break'));
+
+    expect(screen.queryByLabelText('Choose a task')).not.toBeOnTheScreen();
   });
 });
