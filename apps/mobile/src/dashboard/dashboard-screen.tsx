@@ -131,6 +131,11 @@ export function DashboardScreen() {
             Statistics
           </Button>
         </Link>
+        <Link href="/(app)/history" asChild>
+          <Button mode="contained-tonal" icon="history">
+            History
+          </Button>
+        </Link>
       </View>
 
       <Link href="/server-settings" asChild>
