@@ -3,10 +3,10 @@
 Productivity application built around the Pomodoro technique: organise projects
 and tasks, run focus sessions and track productivity metrics.
 
-> 🚧 **Work in progress.** Setup, API reference and architecture notes are being
-> filled in as the implementation lands. The full technical plan — stack
-> rationale, data model, API contract and testing strategy — is in
-> [`docs/PLANO.md`](docs/PLANO.md).
+> The technical plan written before the implementation — stack rationale, data
+> model, API contract, scope and schedule — is in
+> [`docs/PLANO.md`](docs/PLANO.md). This README is the operating manual: how to
+> run it, what it does and why it is built this way.
 
 ## Architecture
 
@@ -20,12 +20,24 @@ business rules such as whether a focus session may start.
 
 ## Stack
 
-| Layer          | Technology                                                   |
-| -------------- | ------------------------------------------------------------ |
-| Mobile         | React Native (Expo), TypeScript, Expo Router, TanStack Query |
-| Backend        | NestJS, TypeScript, Prisma, Swagger                          |
-| Database       | PostgreSQL 16                                                |
-| Infrastructure | Docker Compose                                               |
+| Layer          | Technology          | Why this one                                                                                                                                                         |
+| -------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mobile         | React Native + Expo | EAS builds an installable APK without the evaluator needing Android Studio; one TypeScript vocabulary shared with the backend                                        |
+| Navigation     | Expo Router         | File-based routes and nested layouts, so the authentication guard is a `_layout.tsx` rather than conditionals spread over screens                                    |
+| Server state   | TanStack Query      | Cache, revalidation, retry and a persisted mutation queue — offline behaviour without inventing the infrastructure for it                                            |
+| Local state    | Zustand             | Only the timer tick and UI preferences. No business rule lives here                                                                                                  |
+| UI             | React Native Paper  | Material 3 with Snackbar, Dialog and Banner ready, so loading, empty and error states cost little. ⚖️ A bespoke design system would have consumed the whole deadline |
+| Credentials    | expo-secure-store   | Tokens in Keychain/Keystore, not AsyncStorage                                                                                                                        |
+| Backend        | NestJS              | Modules and DI make the layering explicit and auditable in review; `@nestjs/swagger` generates the API documentation from the code, so it cannot drift               |
+| ORM            | Prisma              | Versioned, reproducible migrations, end-to-end types and `$transaction` for the atomic parts                                                                         |
+| Database       | PostgreSQL 16       | Real foreign keys, `CHECK` and a **partial unique index** — the single-active-session rule is provable in the schema, which a document store could not express       |
+| Infrastructure | Docker Compose      | `docker compose up` brings up database and API together: the "how do I run it" answer is one command                                                                 |
+
+Alternatives weighed and rejected: **Firebase/Supabase** would remove exactly the
+layer this project is meant to show (business rules, authorisation, transactions,
+constraints); **MongoDB** would start on the defensive against a brief that asks
+for relational integrity; **bare React Native** would cost the evaluator a
+toolchain for no gain.
 
 ## Repository layout
 
@@ -291,6 +303,7 @@ and idempotent when several instances start at once.
 
 ```bash
 npm run mobile start        # Metro, for a development build
+npm run mobile start:go     # Metro, for Expo Go — no native build needed
 npm run mobile lint
 npm run mobile typecheck
 npm run mobile test
@@ -306,12 +319,59 @@ where Metro does not look by default. `metro.config.js` adds the root to
 bundler cannot resolve a second copy of React from a parent directory. Without
 it the app fails to bundle at all.
 
+## Testing strategy
+
+Coverage is concentrated where a failure would be silent and expensive — the
+session rules and the isolation between users — rather than spread evenly to
+raise a percentage.
+
+| Level                 | What it covers                                                              | Where                           |
+| --------------------- | --------------------------------------------------------------------------- | ------------------------------- |
+| Unit (backend)        | Password hashing, elapsed-time arithmetic, the session state machine        | `apps/api/src/**/*.spec.ts`     |
+| Integration (backend) | Whole HTTP flows against a real PostgreSQL, not a mock or an in-memory stub | `apps/api/test/*.e2e-spec.ts`   |
+| Unit (mobile)         | Countdown derivation, server-clock offset, token refresh, form validation   | `apps/mobile/src/**/*.test.ts`  |
+| Component (mobile)    | Each screen's loading, empty, error and populated states                    | `apps/mobile/src/**/*.test.tsx` |
+
+```bash
+npm run api test        # provisions pomodoro_test, applies migrations, then runs
+npm run mobile test
+```
+
+The backend suites run against the `pomodoro_test` database, created on the
+first `docker compose up` and migrated by a `pretest` hook, so `npm run api test`
+is the whole command — there is no separate setup step to remember.
+
+The cases that justify the integration tier:
+
+1. Register → login → refresh → authorised request, with the rotated refresh
+   token revoking its predecessor.
+2. User A can neither read nor modify user B's project, task or session, and is
+   told **404** rather than 403.
+3. Starting a second session while one is active is rejected with **409**.
+4. **Two concurrent `start` requests create exactly one session.** This is the
+   test that proves the partial unique index rather than the service's check —
+   the two requests both pass the application-level guard, and the database
+   decides.
+5. A session whose deadline passed is materialised as `COMPLETED` on the next
+   read, with `endedAt` derived rather than set to the time of the read.
+6. An invalid transition — resuming a completed session — is rejected with 409.
+
+Every push and pull request runs the same thing in CI (`.github/workflows`):
+formatting, lint, type-check and both suites, with PostgreSQL as a service
+container. `main` will not take a branch whose `ci` check is not green.
+
+⚖️ **Deliberately not covered:** UI end-to-end (Maestro/Detox) and load testing.
+Both are worth having and neither fits three days; the component tier covers the
+screen states that break most often, and the integration tier covers the rules
+that must never break.
+
 ## Pointing the app at a backend
 
 The API address is configuration, not a constant: the mobile client reads it
-from a build-time variable and exposes it on the profile screen, so the same
-build works against a machine on the local network, a colleague's host, or a
-hosted instance.
+from a build-time variable and lets it be changed on the device — the sign-in
+screen and the dashboard both open Server settings — so the same build works
+against a machine on the local network, a colleague's host, or a hosted
+instance.
 
 To evaluate on a physical device, run the stack and point the app at the host
 machine:
@@ -329,6 +389,30 @@ it, not for a hosted environment, so there is no deployment step to reproduce.
 The image built here is a plain OCI container with no platform-specific
 configuration: any host that runs containers will serve it, given `DATABASE_URL`
 and `JWT_SECRET`.
+
+## Installing the APK
+
+The APK is the fastest way to evaluate the app on a real phone without a Node
+toolchain. Builds run on EAS:
+
+```bash
+npx eas-cli login
+cd apps/mobile && npx eas-cli init   # once, writes the project id into app.json
+npm run mobile build:apk             # profile "preview", installable directly
+```
+
+`eas.json` defines two profiles: **`preview`** produces the APK to install, and
+**`development`** produces the dev client `npm run mobile start` expects. Neither
+is a store artefact, so both use internal distribution and the version comes from
+`app.json`.
+
+Enter the address from the previous section under **Server settings**, reachable
+from the sign-in screen before there is an account and from the dashboard after.
+It is stored on the device, so a single build works against any host.
+
+The build allows cleartext HTTP, because the backend it is aimed at runs on the
+evaluator's own machine over the local network with no certificate. ⚖️ A hosted
+deployment would serve HTTPS and this would come back out.
 
 ## Contributing
 
