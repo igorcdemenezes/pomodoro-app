@@ -11,6 +11,8 @@ export default function AppLayout() {
       <Stack.Screen name="projects" options={{ headerShown: true, title: 'Projects' }} />
       <Stack.Screen name="tasks" options={{ headerShown: true, title: 'Tasks' }} />
       <Stack.Screen name="statistics" options={{ headerShown: true, title: 'Statistics' }} />
+      <Stack.Screen name="history" options={{ headerShown: true, title: 'History' }} />
+      <Stack.Screen name="profile" options={{ headerShown: true, title: 'Profile' }} />
     </Stack>
   );
 }

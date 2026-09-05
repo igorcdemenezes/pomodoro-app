@@ -111,7 +111,11 @@ describe('dashboard', () => {
     expect(screen.getByText('Write the ADR')).toBeOnTheScreen();
   });
 
-  it('signs out', async () => {
+  it('offers a way out when the profile itself cannot be loaded', async () => {
+    // Sign out lives on the Profile screen, which this state cannot reach: a
+    // user whose session is somehow broken would otherwise be stuck here.
+    request.mockRejectedValue(new HttpError(500, 'BOOM', 'Profile is down.'));
+
     await renderScreen();
 
     await fireEvent.press(await screen.findByText('Sign out'));
