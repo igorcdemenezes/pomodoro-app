@@ -1,4 +1,4 @@
-import { isValidBaseUrl, normaliseBaseUrl } from './api-config';
+import { devServerDefault, isValidBaseUrl, normaliseBaseUrl } from './api-config';
 
 describe('API base URL', () => {
   describe('normalising', () => {
@@ -30,6 +30,25 @@ describe('API base URL', () => {
       expect(normaliseBaseUrl('  http://localhost:3000/api/v1  ')).toBe(
         'http://localhost:3000/api/v1',
       );
+    });
+  });
+
+  describe('deriving the address from the dev server', () => {
+    // The phone reached Metro over the local network, so it already holds the
+    // host the API is on. Deriving it is what stops someone having to retype an
+    // address every time DHCP hands out a new one.
+    it('keeps the API port and path, replacing only the host', () => {
+      expect(devServerDefault('192.168.15.126:8081')).toBe('http://192.168.15.126:3000/api/v1');
+    });
+
+    it('handles a host given without the dev server port', () => {
+      expect(devServerDefault('192.168.0.10')).toBe('http://192.168.0.10:3000/api/v1');
+    });
+
+    it('gives up when there is no dev server to learn from', () => {
+      // A release build: no Metro, so the address baked into the build stands.
+      expect(devServerDefault(undefined)).toBeNull();
+      expect(devServerDefault('')).toBeNull();
     });
   });
 

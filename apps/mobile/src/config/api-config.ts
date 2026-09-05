@@ -11,20 +11,58 @@ import { resetServerClock } from '../api/server-clock';
  * APK usable against a reviewer's own machine, a colleague's host, or a hosted
  * instance, without rebuilding.
  *
- * The default targets 10.0.2.2, the address an Android emulator uses to reach
- * the host it runs on. On a physical device it has to be the host's address on
- * the local network.
+ * The shipped default targets 10.0.2.2, the address an Android emulator uses to
+ * reach the host it runs on. On a physical device it means nothing, so in
+ * development the address is derived from the dev server instead: the phone
+ * loaded the bundle over the local network, and Expo hands that host back as
+ * `hostUri`. The API runs on the same machine, so only the port differs — which
+ * spares anyone typing an address that changes every time DHCP moves.
  */
 const STORAGE_KEY = 'pomodoro.apiBaseUrl';
 
 const FALLBACK_BASE_URL = 'http://10.0.2.2:3000/api/v1';
 
-function configuredDefault(): string {
+/** The address baked into the build: the one a release has to rely on. */
+function manifestDefault(): string {
   const fromManifest = Constants.expoConfig?.extra?.apiBaseUrl;
 
   return typeof fromManifest === 'string' && fromManifest.length > 0
     ? fromManifest
     : FALLBACK_BASE_URL;
+}
+
+/**
+ * The same address with the dev server's host swapped in.
+ *
+ * Port and path are taken from the configured default rather than repeated
+ * here, so the build config stays the one place that decides them. Returns null
+ * outside development, where there is no dev server and the shipped address is
+ * the only meaningful answer.
+ */
+export function devServerDefault(hostUri: string | undefined): string | null {
+  const host = hostUri?.split(':')[0];
+
+  if (!host) return null;
+
+  try {
+    const derived = new URL(normaliseBaseUrl(manifestDefault()));
+
+    derived.hostname = host;
+
+    return normaliseBaseUrl(derived.toString());
+  } catch {
+    return null;
+  }
+}
+
+function configuredDefault(): string {
+  if (__DEV__) {
+    const fromDevServer = devServerDefault(Constants.expoConfig?.hostUri);
+
+    if (fromDevServer) return fromDevServer;
+  }
+
+  return manifestDefault();
 }
 
 let cached: string | null = null;
