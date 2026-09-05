@@ -36,9 +36,9 @@ async function main(): Promise<void> {
       passwordHash: await hashPassword(DEMO_PASSWORD),
       projects: {
         create: [
-          { name: 'Deep Work', color: '#6E56CF' },
-          { name: 'Studies', color: '#30A46C' },
-          { name: 'Side Project', color: '#E5484D' },
+          { name: 'Deep Work', color: '#2A78D6' },
+          { name: 'Studies', color: '#EB6834' },
+          { name: 'Side Project', color: '#1BAF7A' },
         ],
       },
     },
