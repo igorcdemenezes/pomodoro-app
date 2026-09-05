@@ -8,6 +8,7 @@ export default function AppLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="focus" options={{ headerShown: true, title: 'Focus' }} />
+      <Stack.Screen name="projects" options={{ headerShown: true, title: 'Projects' }} />
     </Stack>
   );
 }

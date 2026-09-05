@@ -72,8 +72,14 @@ export default function HomeScreen() {
         </Button>
       </Link>
 
+      <Link href="/(app)/projects" asChild>
+        <Button mode="contained-tonal" icon="folder-outline">
+          Projects
+        </Button>
+      </Link>
+
       <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-        Projects, tasks and statistics land here next.
+        History and statistics land here next.
       </Text>
 
       <Link href="/server-settings" asChild>
