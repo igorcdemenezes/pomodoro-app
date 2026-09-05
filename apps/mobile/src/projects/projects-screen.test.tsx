@@ -19,7 +19,7 @@ function project(overrides: Partial<Project> = {}): Project {
   return {
     id: 'p1000000-0000-4000-8000-000000000001',
     name: 'Deep Work',
-    color: '#6E56CF',
+    color: '#2A78D6',
     archivedAt: null,
     openTaskCount: 2,
     taskCount: 5,
@@ -85,7 +85,7 @@ describe('projects screen', () => {
     // The name is trimmed before it leaves: the backend trims too, but a value
     // that only differs by whitespace should not look like a new project here.
     await waitFor(() =>
-      expect(api.createProject).toHaveBeenCalledWith({ name: 'Thesis', color: '#6E56CF' }),
+      expect(api.createProject).toHaveBeenCalledWith({ name: 'Thesis', color: '#2A78D6' }),
     );
   });
 

@@ -15,6 +15,7 @@ import {
 
 import { Screen } from '../ui/screen';
 import { EmptyState, ErrorState, LoadingState } from '../ui/states';
+import { projectColor } from '../theme/project-colors';
 import { ProjectDialog } from './project-dialog';
 import type { Project } from './project-types';
 import { useProjectMutations, useProjects } from './use-projects';
@@ -102,7 +103,11 @@ export function ProjectsScreen() {
               onPress={() =>
                 router.push({ pathname: '/(app)/tasks', params: { projectId: item.id } })
               }
-              left={() => <View style={[styles.dot, { backgroundColor: item.color }]} />}
+              left={() => (
+                <View
+                  style={[styles.dot, { backgroundColor: projectColor(item.color, theme.dark) }]}
+                />
+              )}
               right={() => (
                 <Menu
                   visible={menuFor === item.id}

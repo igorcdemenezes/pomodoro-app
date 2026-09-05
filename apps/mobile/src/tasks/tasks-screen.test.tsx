@@ -26,7 +26,7 @@ function project(overrides: Partial<Project> = {}): Project {
   return {
     id: PROJECT_ID,
     name: 'Deep Work',
-    color: '#6E56CF',
+    color: '#2A78D6',
     archivedAt: null,
     openTaskCount: 1,
     taskCount: 1,

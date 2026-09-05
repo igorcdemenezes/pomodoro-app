@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Button, Dialog, HelperText, Portal, TextInput, useTheme } from 'react-native-paper';
 
-import { PROJECT_COLORS } from './project-types';
+import { PROJECT_COLORS, projectColor } from '../theme/project-colors';
 import type { Project } from './project-types';
 
 interface ProjectDialogProps {
@@ -116,7 +116,7 @@ function Swatch({
       accessibilityLabel={`Colour ${color}`}
       style={[
         styles.swatch,
-        { backgroundColor: color },
+        { backgroundColor: projectColor(color, theme.dark) },
         selected && { borderColor: theme.colors.onSurface, borderWidth: 3 },
       ]}
     />
