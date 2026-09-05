@@ -51,6 +51,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
+    "build:apk": "npx eas-cli build --platform android --profile preview",
+    "build:dev-client": "npx eas-cli build --platform android --profile development",
     "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.{ts,tsx}\" \"app/**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
     "test": "jest",
