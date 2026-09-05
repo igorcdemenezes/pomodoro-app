@@ -1,12 +1,9 @@
 import { StyleSheet, View } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
 import { Link } from 'expo-router';
 import { Button, Divider, List, Text, useTheme } from 'react-native-paper';
 
-import { authenticatedRequest } from '../api/authenticated-request';
-import { useAuthStore } from '../auth/auth-store';
-import type { UserProfile } from '../auth/auth-types';
 import { useAuthActions } from '../auth/use-auth-actions';
+import { useProfile } from '../profile/use-profile';
 import { formatDuration } from '../stats/duration';
 import { StatTile } from '../stats/stat-tile';
 import { useSummary } from '../stats/use-stats';
@@ -18,20 +15,9 @@ const MAX_TASKS_SHOWN = 3;
 
 export function DashboardScreen() {
   const theme = useTheme();
-  const setUser = useAuthStore((state) => state.setUser);
   const { signOut } = useAuthActions();
 
-  // Fetched through the authenticated client on purpose: this is what exercises
-  // the token being attached and the refresh rotating without the user noticing.
-  const profile = useQuery({
-    queryKey: ['me'],
-    queryFn: async () => {
-      const user = await authenticatedRequest<UserProfile>('/me');
-      setUser(user);
-      return user;
-    },
-  });
-
+  const profile = useProfile();
   const summary = useSummary('week');
   const inProgress = useTasks({ status: 'IN_PROGRESS' });
 
@@ -136,14 +122,12 @@ export function DashboardScreen() {
             History
           </Button>
         </Link>
+        <Link href="/(app)/profile" asChild>
+          <Button mode="contained-tonal" icon="account-outline">
+            Profile
+          </Button>
+        </Link>
       </View>
-
-      <Link href="/server-settings" asChild>
-        <Button mode="text">Server</Button>
-      </Link>
-      <Button mode="outlined" onPress={() => void signOut()}>
-        Sign out
-      </Button>
     </Screen>
   );
 }
