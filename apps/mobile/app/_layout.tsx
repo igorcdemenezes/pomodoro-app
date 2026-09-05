@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuthStore } from '../src/auth/auth-store';
 import { startFocusManager } from '../src/net/app-focus';
 import { startOnlineManager } from '../src/net/online-manager';
+import { startSessionNotifications } from '../src/sessions/session-notification';
 import { queryClient, queryPersister } from '../src/query/query-client';
 import { themes } from '../src/theme/theme';
 import { OfflineBanner } from '../src/ui/offline-banner';
@@ -23,6 +24,7 @@ export default function RootLayout() {
   // and never learns that the connection dropped or that the app was put away.
   useEffect(() => {
     startOnlineManager();
+    startSessionNotifications();
 
     return startFocusManager();
   }, []);

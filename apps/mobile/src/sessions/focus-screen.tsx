@@ -10,6 +10,7 @@ import { SESSION_KIND_LABELS, SESSION_KINDS } from './session-types';
 import type { SessionKind } from './session-types';
 import { useActiveSession } from './use-active-session';
 import { useCountdown } from './use-countdown';
+import { useSessionEndNotification } from './use-session-notification';
 import { useSessionControls } from './use-session-controls';
 import { sessionColors } from '../theme/theme';
 import { Screen } from '../ui/screen';
@@ -38,6 +39,10 @@ export function FocusScreen() {
 
   const session = active.data ?? null;
   const remaining = useCountdown(session);
+
+  // Booked with the operating system, so the end of a session reaches the user
+  // with the app in the background — where a Pomodoro usually is.
+  useSessionEndNotification(session);
 
   const [kind, setKind] = useState<SessionKind>('FOCUS');
   const [notice, setNotice] = useState<string | null>(null);

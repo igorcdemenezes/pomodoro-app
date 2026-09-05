@@ -4,10 +4,12 @@ import { PaperProvider } from 'react-native-paper';
 
 import { resetServerClock } from '../api/server-clock';
 import type { Session } from './session-types';
+import * as sessionNotification from './session-notification';
 import * as sessionsApi from './sessions-api';
 import { FocusScreen } from './focus-screen';
 
 jest.mock('./sessions-api');
+jest.mock('./session-notification');
 jest.mock('expo-keep-awake', () => ({
   activateKeepAwakeAsync: jest.fn(() => Promise.resolve()),
   deactivateKeepAwake: jest.fn(() => Promise.resolve()),
@@ -15,6 +17,7 @@ jest.mock('expo-keep-awake', () => ({
 jest.mock('expo-crypto', () => ({ randomUUID: () => 'ffffffff-0000-4000-8000-00000000000f' }));
 
 const api = jest.mocked(sessionsApi);
+const notifier = jest.mocked(sessionNotification);
 
 const NOW = '2026-09-03T12:00:00.000Z';
 
@@ -56,6 +59,7 @@ describe('focus screen', () => {
     jest.clearAllMocks();
     resetServerClock();
     jest.useFakeTimers().setSystemTime(new Date(NOW));
+    notifier.scheduleSessionEnd.mockResolvedValue('notification-1');
   });
 
   afterEach(() => {
@@ -146,5 +150,39 @@ describe('focus screen', () => {
       'a5b6c7d8-0000-4000-8000-000000000001',
       'pause',
     );
+  });
+  it('books the end of a running session and takes it back when it is paused', async () => {
+    api.fetchActiveSession.mockResolvedValue(running());
+    api.transitionSession.mockResolvedValue(
+      running({ status: 'PAUSED', dueAt: null, remainingSec: 900 }),
+    );
+
+    await renderScreen();
+
+    await waitFor(() => expect(notifier.scheduleSessionEnd).toHaveBeenCalledTimes(1));
+
+    await fireEvent.press(await screen.findByText('Pause'));
+
+    // A paused session has no deadline, so the booking made for the old one
+    // would go off during the pause.
+    await waitFor(() => expect(notifier.cancelSessionEnd).toHaveBeenCalledWith('notification-1'));
+  });
+
+  it('does not rebook the same deadline when the session is fetched again', async () => {
+    api.fetchActiveSession.mockResolvedValue(running());
+
+    await renderScreen();
+
+    await waitFor(() => expect(notifier.scheduleSessionEnd).toHaveBeenCalledTimes(1));
+
+    // The screen refetches just past the deadline; the query hands back a new
+    // object every time, which a naive effect would treat as a new session.
+    await act(async () => {
+      jest.advanceTimersByTime(16 * 60 * 1000);
+    });
+
+    expect(api.fetchActiveSession.mock.calls.length).toBeGreaterThan(1);
+    expect(notifier.scheduleSessionEnd).toHaveBeenCalledTimes(1);
+    expect(notifier.cancelSessionEnd).not.toHaveBeenCalled();
   });
 });
