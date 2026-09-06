@@ -1,8 +1,13 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Button, Dialog, HelperText, Portal, TextInput, useTheme } from 'react-native-paper';
+import { Dialog, Portal } from 'react-native-paper';
 
-import { PROJECT_COLORS, projectColor } from '../theme/project-colors';
+import { PROJECT_COLORS } from '../theme/project-colors';
+import { color, radius } from '../theme/tokens';
+import { Button } from '../ui/button';
+import { TextField } from '../ui/field';
+import { Icon } from '../ui/icon';
+import { Text } from '../ui/text';
 import type { Project } from './project-types';
 
 interface ProjectDialogProps {
@@ -20,8 +25,7 @@ export function ProjectDialog({ project, pending, onDismiss, onSubmit }: Project
 
   return (
     <Portal>
-      <Dialog visible={visible} onDismiss={onDismiss}>
-        <Dialog.Title>{project ? 'Edit project' : 'New project'}</Dialog.Title>
+      <Dialog visible={visible} onDismiss={onDismiss} style={styles.dialog}>
         {/* Keyed by what is being edited, so opening the dialog mounts a fresh
             form rather than one still holding the previous project's name. */}
         {visible ? (
@@ -47,84 +51,100 @@ function ProjectForm({
   project: Project | null;
 }) {
   const [name, setName] = useState(project?.name ?? '');
-  const [color, setColor] = useState<string>(project?.color ?? PROJECT_COLORS[0]);
+  const [swatch, setSwatch] = useState<string>(project?.color ?? PROJECT_COLORS[0]);
 
   const trimmed = name.trim();
   const tooLong = trimmed.length > MAX_NAME_LENGTH;
   const valid = trimmed.length > 0 && !tooLong;
 
   return (
-    <>
-      <Dialog.Content style={styles.content}>
-        <TextInput
-          label="Name"
-          // Paper does not derive one from the label, so the field would
-          // otherwise be unnamed to a screen reader.
-          accessibilityLabel="Name"
-          value={name}
-          onChangeText={setName}
-          mode="outlined"
-          autoFocus
-          maxLength={MAX_NAME_LENGTH}
-          error={tooLong}
-        />
-        <HelperText type="error" visible={tooLong}>
-          Keep the name under {MAX_NAME_LENGTH} characters.
-        </HelperText>
+    <View style={styles.body}>
+      <Text variant="personName">{project ? 'Edit project' : 'New project'}</Text>
 
+      <TextField
+        label="Name"
+        value={name}
+        onChangeText={setName}
+        error={tooLong ? `Keep the name under ${MAX_NAME_LENGTH} characters.` : undefined}
+        autoCapitalize="sentences"
+        autoFocus
+        maxLength={MAX_NAME_LENGTH}
+      />
+
+      <View style={styles.colours}>
+        <Text variant="overline">COLOUR</Text>
         <View style={styles.swatches}>
           {PROJECT_COLORS.map((value) => (
             <Swatch
               key={value}
-              color={value}
-              selected={value === color}
-              onPress={() => setColor(value)}
+              colour={value}
+              selected={value === swatch}
+              onPress={() => setSwatch(value)}
             />
           ))}
         </View>
-      </Dialog.Content>
-      <Dialog.Actions>
-        <Button onPress={onDismiss}>Cancel</Button>
+      </View>
+
+      <View style={styles.actions}>
+        <Button label="Cancel" variant="ghost" onPress={onDismiss} style={styles.action} />
         <Button
-          onPress={() => onSubmit({ name: trimmed, color })}
-          disabled={!valid || pending}
+          label="Save"
+          onPress={() => onSubmit({ name: trimmed, color: swatch })}
+          disabled={!valid}
           loading={pending}
-        >
-          Save
-        </Button>
-      </Dialog.Actions>
-    </>
+          style={styles.action}
+        />
+      </View>
+    </View>
   );
 }
 
+/**
+ * A colour choice, confirmed by a checkmark rather than by a ring.
+ *
+ * A ring alone would be the only marker of which slot is chosen, and the ring
+ * around a dark swatch is exactly what a low-vision reader loses; the tick sits
+ * inside the fill, where it has the swatch's own contrast behind it.
+ */
 function Swatch({
-  color,
+  colour,
   selected,
   onPress,
 }: {
-  color: string;
+  colour: string;
   selected: boolean;
   onPress: () => void;
 }) {
-  const theme = useTheme();
-
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
-      accessibilityLabel={`Colour ${color}`}
-      style={[
+      accessibilityLabel={`Colour ${colour}`}
+      style={({ pressed }) => [
         styles.swatch,
-        { backgroundColor: projectColor(color, theme.dark) },
-        selected && { borderColor: theme.colors.onSurface, borderWidth: 3 },
+        { backgroundColor: colour },
+        pressed && styles.pressed,
       ]}
-    />
+    >
+      {selected ? <Icon name="check" size={18} color={color.onAccent} strokeWidth={3} /> : null}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { gap: 4 },
+  dialog: { backgroundColor: color.surface, borderRadius: radius.card },
+  body: { padding: 20, gap: 20 },
+  colours: { gap: 10 },
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  swatch: { width: 36, height: 36, borderRadius: 18, borderColor: 'transparent', borderWidth: 3 },
+  swatch: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: { opacity: 0.7 },
+  actions: { flexDirection: 'row', gap: 12 },
+  action: { flex: 1 },
 });

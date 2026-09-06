@@ -1,37 +1,59 @@
-import { useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import {
-  Divider,
-  FAB,
-  IconButton,
-  List,
-  Menu,
-  Snackbar,
-  Switch,
-  Text,
-  useTheme,
-} from 'react-native-paper';
+import { Menu, Snackbar } from 'react-native-paper';
 
+import { formatDuration } from '../stats/duration';
+import { useByProject } from '../stats/use-stats';
+import { color, radius, size } from '../theme/tokens';
+import { RoundButton } from '../ui/button';
 import { Screen } from '../ui/screen';
+import { Segmented } from '../ui/segmented';
 import { EmptyState, ErrorState, LoadingState } from '../ui/states';
-import { projectColor } from '../theme/project-colors';
+import { Card, Dot, Meter } from '../ui/surface';
+import { Text } from '../ui/text';
 import { ProjectDialog } from './project-dialog';
 import type { Project } from './project-types';
 import { useProjectMutations, useProjects } from './use-projects';
 
+const TABS = [
+  { value: 'active', label: 'Active' },
+  { value: 'archived', label: 'Archived' },
+] as const;
+
+type Tab = (typeof TABS)[number]['value'];
+
 export function ProjectsScreen() {
-  const theme = useTheme();
   const router = useRouter();
 
-  const [includeArchived, setIncludeArchived] = useState(false);
-  const projects = useProjects(includeArchived);
+  const [tab, setTab] = useState<Tab>('active');
+  // One request for both tabs: the split is a property of each project, not a
+  // different list, and refetching to flip a filter would blank the screen.
+  const projects = useProjects(true);
+  const breakdown = useByProject('week');
   const mutations = useProjectMutations();
 
   // `undefined` keeps the dialog closed; `null` opens it empty; a project opens
   // it for editing.
   const [editing, setEditing] = useState<Project | null | undefined>(undefined);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+
+  const focusByProject = useMemo(
+    () => new Map((breakdown.data ?? []).map((item) => [item.projectId, item.focusedSeconds])),
+    [breakdown.data],
+  );
+  const focusTotal = useMemo(
+    () => (breakdown.data ?? []).reduce((total, item) => total + item.focusedSeconds, 0),
+    [breakdown.data],
+  );
+
+  const shown = useMemo(
+    () =>
+      (projects.data ?? []).filter((project) =>
+        tab === 'archived' ? project.archivedAt !== null : project.archivedAt === null,
+      ),
+    [projects.data, tab],
+  );
 
   const submit = async (values: { name: string; color: string }) => {
     try {
@@ -59,7 +81,7 @@ export function ProjectsScreen() {
 
   if (projects.isError) {
     return (
-      <Screen ignoreTopInset>
+      <Screen bottomInset={false}>
         <ErrorState
           title="Could not load your projects"
           description={projects.error.message}
@@ -70,82 +92,119 @@ export function ProjectsScreen() {
     );
   }
 
+  const activeCount = (projects.data ?? []).filter((p) => p.archivedAt === null).length;
+  const taskCount = (projects.data ?? []).reduce((total, p) => total + p.taskCount, 0);
+
   return (
-    <Screen ignoreTopInset>
-      <View style={styles.filter}>
-        <Text variant="bodyMedium">Show archived</Text>
-        <Switch value={includeArchived} onValueChange={setIncludeArchived} />
+    <Screen bottomInset={false}>
+      <View style={styles.header}>
+        <View style={styles.heading}>
+          <Text variant="pageTitle">Projects</Text>
+          <Text variant="label" tone="secondary">
+            {activeCount} active · {taskCount} tasks · {formatDuration(focusTotal)} this week
+          </Text>
+        </View>
+        <RoundButton
+          icon="plus"
+          diameter={size.touch}
+          iconSize={22}
+          strokeWidth={2.2}
+          background={color.accent}
+          tint={color.onAccent}
+          accessibilityLabel="New project"
+          onPress={() => setEditing(null)}
+        />
+      </View>
+
+      <View style={styles.tabs}>
+        <Segmented options={TABS} value={tab} onChange={setTab} accessibilityLabel="Project list" />
       </View>
 
       <FlatList
-        data={projects.data}
+        style={styles.flex}
+        data={shown}
         keyExtractor={(project) => project.id}
-        ItemSeparatorComponent={Divider}
         contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
         refreshing={projects.isFetching}
         onRefresh={() => void projects.refetch()}
         ListEmptyComponent={
-          <EmptyState
-            title="No projects yet"
-            description="Group your tasks under a project to see where your focus time goes."
-            actionLabel="Create a project"
-            onAction={() => setEditing(null)}
-          />
+          tab === 'archived' ? (
+            <EmptyState
+              title="Nothing archived"
+              description="Archiving a project hides it here without losing the focus time it holds."
+            />
+          ) : (
+            <EmptyState
+              title="No projects yet"
+              description="Group your tasks under a project to see where your focus time goes."
+              actionLabel="Create a project"
+              onAction={() => setEditing(null)}
+            />
+          )
         }
         renderItem={({ item }) => {
-          const archived = item.archivedAt !== null;
+          const focused = focusByProject.get(item.id) ?? 0;
+          const share = focusTotal > 0 ? focused / focusTotal : 0;
 
           return (
-            <List.Item
-              title={item.name}
-              titleStyle={archived ? { color: theme.colors.onSurfaceVariant } : undefined}
-              description={describeCounts(item)}
-              onPress={() =>
-                router.push({ pathname: '/(app)/tasks', params: { projectId: item.id } })
-              }
-              left={() => (
-                <View
-                  style={[styles.dot, { backgroundColor: projectColor(item.color, theme.dark) }]}
-                />
-              )}
-              right={() => (
-                <Menu
-                  visible={menuFor === item.id}
-                  onDismiss={() => setMenuFor(null)}
-                  anchor={
-                    <IconButton
-                      icon="dots-vertical"
-                      accessibilityLabel={`Actions for ${item.name}`}
-                      onPress={() => setMenuFor(item.id)}
+            <Pressable
+              onPress={() => router.push({ pathname: '/tasks', params: { projectId: item.id } })}
+              accessibilityRole="button"
+              accessibilityLabel={item.name}
+              style={({ pressed }) => pressed && styles.pressed}
+            >
+              <Card style={styles.card}>
+                <View style={styles.cardHead}>
+                  <Dot color={item.color} />
+                  <Text variant="cardTitle" numberOfLines={1} style={styles.cardName}>
+                    {item.name}
+                  </Text>
+                  <Text variant="numeralXs" tone="secondary">
+                    {formatDuration(focused)} · {Math.round(share * 100)}%
+                  </Text>
+                  <Menu
+                    visible={menuFor === item.id}
+                    onDismiss={() => setMenuFor(null)}
+                    anchor={
+                      <RoundButton
+                        icon="more"
+                        diameter={size.chip}
+                        iconSize={18}
+                        strokeWidth={2.4}
+                        accessibilityLabel={`Actions for ${item.name}`}
+                        onPress={() => setMenuFor(item.id)}
+                      />
+                    }
+                  >
+                    <Menu.Item
+                      leadingIcon="pencil"
+                      title="Edit"
+                      onPress={() => {
+                        setMenuFor(null);
+                        setEditing(item);
+                      }}
                     />
-                  }
-                >
-                  <Menu.Item
-                    leadingIcon="pencil"
-                    title="Edit"
-                    onPress={() => {
-                      setMenuFor(null);
-                      setEditing(item);
-                    }}
-                  />
-                  <Menu.Item
-                    leadingIcon={archived ? 'archive-arrow-up' : 'archive-arrow-down'}
-                    title={archived ? 'Restore' : 'Archive'}
-                    onPress={() => void toggleArchived(item)}
-                  />
-                </Menu>
-              )}
-            />
+                    <Menu.Item
+                      leadingIcon={item.archivedAt ? 'archive-arrow-up' : 'archive-arrow-down'}
+                      title={item.archivedAt ? 'Restore' : 'Archive'}
+                      onPress={() => void toggleArchived(item)}
+                    />
+                  </Menu>
+                </View>
+
+                <View style={styles.cardFoot}>
+                  <View style={styles.meter}>
+                    <Meter fraction={share} color={item.color} />
+                  </View>
+                  <Text variant="caption" tone="secondary">
+                    {describeCounts(item)}
+                  </Text>
+                </View>
+              </Card>
+            </Pressable>
           );
         }}
-      />
-
-      <FAB
-        icon="plus"
-        label="New project"
-        accessibilityLabel="New project"
-        onPress={() => setEditing(null)}
-        style={styles.fab}
       />
 
       <ProjectDialog
@@ -175,7 +234,9 @@ function describeCounts(project: Project): string {
 
   if (project.taskCount === 0) return `No tasks yet${suffix}`;
 
-  return `${project.openTaskCount} open of ${project.taskCount}${suffix}`;
+  const done = project.taskCount - project.openTaskCount;
+
+  return `${project.taskCount} tasks · ${done} done${suffix}`;
 }
 
 function describe(code: string, message: string): string {
@@ -183,8 +244,15 @@ function describe(code: string, message: string): string {
 }
 
 const styles = StyleSheet.create({
-  filter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
-  list: { flexGrow: 1, paddingBottom: 88 },
-  dot: { width: 16, height: 16, borderRadius: 8, alignSelf: 'center', marginLeft: 8 },
-  fab: { position: 'absolute', right: 20, bottom: 24 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  heading: { flex: 1, gap: 2 },
+  tabs: { marginTop: 20 },
+  flex: { flex: 1 },
+  list: { flexGrow: 1, paddingTop: 20, gap: 12 },
+  pressed: { opacity: 0.8 },
+  card: { padding: 16, gap: 12, borderRadius: radius.card },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  cardName: { flex: 1 },
+  cardFoot: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  meter: { flex: 1 },
 });
