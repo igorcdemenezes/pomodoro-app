@@ -17,13 +17,6 @@ interface ScreenProps {
   bottomInset?: boolean;
   /** Off when the screen owns its own padding — a full-bleed list, say. */
   padded?: boolean;
-  /**
-   * Accepted and ignored while the screens are being redrawn one at a time.
-   * None of them has a navigator header any more, so the top inset is always
-   * this component's to draw; the prop goes when the last caller stops passing
-   * it.
-   */
-  ignoreTopInset?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
 }
 
