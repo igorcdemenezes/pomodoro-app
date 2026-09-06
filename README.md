@@ -20,18 +20,18 @@ business rules such as whether a focus session may start.
 
 ## Stack
 
-| Layer          | Technology          | Why this one                                                                                                                                                         |
-| -------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Mobile         | React Native + Expo | EAS builds an installable APK without the evaluator needing Android Studio; one TypeScript vocabulary shared with the backend                                        |
-| Navigation     | Expo Router         | File-based routes and nested layouts, so the authentication guard is a `_layout.tsx` rather than conditionals spread over screens                                    |
-| Server state   | TanStack Query      | Cache, revalidation, retry and a persisted mutation queue — offline behaviour without inventing the infrastructure for it                                            |
-| Local state    | Zustand             | Only the timer tick and UI preferences. No business rule lives here                                                                                                  |
-| UI             | React Native Paper  | Material 3 with Snackbar, Dialog and Banner ready, so loading, empty and error states cost little. ⚖️ A bespoke design system would have consumed the whole deadline |
-| Credentials    | expo-secure-store   | Tokens in Keychain/Keystore, not AsyncStorage                                                                                                                        |
-| Backend        | NestJS              | Modules and DI make the layering explicit and auditable in review; `@nestjs/swagger` generates the API documentation from the code, so it cannot drift               |
-| ORM            | Prisma              | Versioned, reproducible migrations, end-to-end types and `$transaction` for the atomic parts                                                                         |
-| Database       | PostgreSQL 16       | Real foreign keys, `CHECK` and a **partial unique index** — the single-active-session rule is provable in the schema, which a document store could not express       |
-| Infrastructure | Docker Compose      | `docker compose up` brings up database and API together: the "how do I run it" answer is one command                                                                 |
+| Layer          | Technology          | Why this one                                                                                                                                                                                                                        |
+| -------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mobile         | React Native + Expo | EAS builds an installable APK without the evaluator needing Android Studio; one TypeScript vocabulary shared with the backend                                                                                                       |
+| Navigation     | Expo Router         | File-based routes and nested layouts, so the authentication guard is a `_layout.tsx` rather than conditionals spread over screens                                                                                                   |
+| Server state   | TanStack Query      | Cache, revalidation, retry and a persisted mutation queue — offline behaviour without inventing the infrastructure for it                                                                                                           |
+| Local state    | Zustand             | Only the timer tick and UI preferences. No business rule lives here                                                                                                                                                                 |
+| UI             | Own design system   | Tokens, type scale and components in `src/theme` and `src/ui`, drawn from the screen designs. React Native Paper is kept for the four things it does better than a hand-rolled version — dialog, menu, snackbar, activity indicator |
+| Credentials    | expo-secure-store   | Tokens in Keychain/Keystore, not AsyncStorage                                                                                                                                                                                       |
+| Backend        | NestJS              | Modules and DI make the layering explicit and auditable in review; `@nestjs/swagger` generates the API documentation from the code, so it cannot drift                                                                              |
+| ORM            | Prisma              | Versioned, reproducible migrations, end-to-end types and `$transaction` for the atomic parts                                                                                                                                        |
+| Database       | PostgreSQL 16       | Real foreign keys, `CHECK` and a **partial unique index** — the single-active-session rule is provable in the schema, which a document store could not express                                                                      |
+| Infrastructure | Docker Compose      | `docker compose up` brings up database and API together: the "how do I run it" answer is one command                                                                                                                                |
 
 Alternatives weighed and rejected: **Firebase/Supabase** would remove exactly the
 layer this project is meant to show (business rules, authorisation, transactions,
@@ -309,9 +309,26 @@ npm run mobile typecheck
 npm run mobile test
 ```
 
-The client is an Expo app using Expo Router for file-based navigation, React
-Native Paper for the component layer, TanStack Query for server state and
-Zustand for the little local state that is genuinely local.
+The client is an Expo app using Expo Router for file-based navigation, TanStack
+Query for server state and Zustand for the little local state that is genuinely
+local. Five screens live in a tab navigator; Tasks, History and the server
+settings push over it.
+
+Its look is its own. `src/theme/tokens.ts` holds the palette, the type and the
+geometry — one warm white, one red, Manrope for text and Space Grotesk for
+numerals — and `src/ui` holds the components drawn from them: the timer ring,
+the tab bar, the buttons, fields, chips, cards and rows. Everything is flat;
+the only effect anywhere is the soft copy of the timer's arc.
+
+Two rules are worth stating because the rest follows from them. **Red is the
+brand, so red cannot also mean "error":** a focused field takes a neutral
+heavier border, and red plus a message is reserved for something that actually
+went wrong. And **colour is never the only carrier of meaning:** every project
+dot sits beside the name it stands for, which is what lets the categorical
+palette use hues a colourblind reader may not separate.
+
+The theme is light only. The design defines a single palette; a dark one
+invented alongside it would be a palette nobody checked for contrast.
 
 Because the repository is an npm workspace, dependencies hoist to the root,
 where Metro does not look by default. `metro.config.js` adds the root to
@@ -369,7 +386,7 @@ that must never break.
 
 The API address is configuration, not a constant: the mobile client reads it
 from a build-time variable and lets it be changed on the device — the sign-in
-screen and the dashboard both open Server settings — so the same build works
+screen and the profile both open Server settings — so the same build works
 against a machine on the local network, a colleague's host, or a hosted
 instance.
 
@@ -407,7 +424,8 @@ is a store artefact, so both use internal distribution and the version comes fro
 `app.json`.
 
 Enter the address from the previous section under **Server settings**, reachable
-from the sign-in screen before there is an account and from the dashboard after.
+from the card on the sign-in screen before there is an account and from the
+profile after.
 It is stored on the device, so a single build works against any host.
 
 The build allows cleartext HTTP, because the backend it is aimed at runs on the
