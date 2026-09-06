@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, SectionList, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
 
+import { useGoBack } from '../navigation/use-go-back';
 import { SESSION_KIND_LABELS } from '../sessions/session-types';
 import type { Session } from '../sessions/session-types';
 import { formatDuration } from '../stats/duration';
@@ -17,7 +17,8 @@ import type { HistoryRange } from './history-range';
 import { useHistory } from './use-history';
 
 export function HistoryScreen() {
-  const router = useRouter();
+  // Pushed from the dashboard; the fallback covers a link straight to it.
+  const goBack = useGoBack('/');
   const [range, setRange] = useState<HistoryRange>('week');
 
   const history = useHistory(range);
@@ -35,7 +36,7 @@ export function HistoryScreen() {
     [tasks.data],
   );
 
-  const header = <HeaderBar title="History" onBack={() => router.back()} />;
+  const header = <HeaderBar title="History" onBack={goBack} />;
 
   if (history.isPending) return <LoadingState title="Loading your history…" />;
 

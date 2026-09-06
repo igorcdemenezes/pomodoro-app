@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 
 import { useAuthStore } from './auth-store';
+import { color } from '../theme/tokens';
 import { LoadingState } from '../ui/states';
 
 /**
@@ -12,8 +14,12 @@ import { LoadingState } from '../ui/states';
  * navigating while rendering is what produces the "attempted to navigate before
  * mounting the Root Layout" crash on a cold start.
  *
- * While the keystore is being read nothing is rendered but a spinner, otherwise
- * a returning user sees the sign-in screen flash before being sent to the app.
+ * While the keystore is being read the spinner is laid *over* the navigator
+ * rather than in place of it. A returning user still never sees the sign-in
+ * screen flash, and the navigator is mounted on the first render — which is
+ * what Expo Router needs in order to hand it the route the app was opened at.
+ * Swapping the tree out instead cost it that route, and the app came back on
+ * whichever screen the stack falls back to, with no history behind it.
  */
 export function RouteGuard({ children }: { children: ReactNode }) {
   const status = useAuthStore((state) => state.status);
@@ -35,7 +41,18 @@ export function RouteGuard({ children }: { children: ReactNode }) {
     }
   }, [status, segments, router]);
 
-  if (status === 'hydrating') return <LoadingState title="Restoring your session…" />;
-
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {status === 'hydrating' ? (
+        <View style={[StyleSheet.absoluteFill, styles.veil]}>
+          <LoadingState title="Restoring your session…" />
+        </View>
+      ) : null}
+    </>
+  );
 }
+
+const styles = StyleSheet.create({
+  veil: { backgroundColor: color.canvas },
+});

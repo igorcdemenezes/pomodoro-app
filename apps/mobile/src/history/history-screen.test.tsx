@@ -13,7 +13,9 @@ jest.mock('../tasks/tasks-api');
 
 // Prefixed with `mock` so the factory below may close over it.
 const mockBack = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ back: mockBack }) }));
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ back: mockBack, canGoBack: () => true, replace: jest.fn() }),
+}));
 
 const api = jest.mocked(historyApi);
 const tasks = jest.mocked(tasksApi);

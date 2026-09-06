@@ -81,6 +81,15 @@ export default function RootLayout() {
                   contentStyle: { backgroundColor: color.canvas },
                 }}
               >
+                {/* All three are named, in order, on purpose: Expo Router puts the
+                    screens a layout declares ahead of the ones it only found on
+                    disk, and the first screen in a stack is where the navigator
+                    lands when it has no route to restore. Declaring only
+                    `server-settings` — the one screen that needed options — made
+                    the server form that fallback, so the app opened on it with
+                    nothing underneath and its back button had nowhere to go. */}
+                <Stack.Screen name="(app)" />
+                <Stack.Screen name="(auth)" />
                 <Stack.Screen name="server-settings" options={{ presentation: 'modal' }} />
               </Stack>
             </RouteGuard>

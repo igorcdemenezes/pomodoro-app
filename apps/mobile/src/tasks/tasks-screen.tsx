@@ -3,6 +3,7 @@ import { FlatList, StyleSheet, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Dialog, Menu, Portal, Snackbar } from 'react-native-paper';
 
+import { useGoBack } from '../navigation/use-go-back';
 import { useProjects } from '../projects/use-projects';
 import { color, font, radius, size } from '../theme/tokens';
 import { Button, RoundButton } from '../ui/button';
@@ -17,6 +18,9 @@ import { useTaskMutations, useTasks } from './use-tasks';
 
 export function TasksScreen() {
   const router = useRouter();
+  // Pushed from a project row or the dashboard; the fallback covers a link
+  // straight into a project's tasks.
+  const goBack = useGoBack('/projects');
 
   // Arriving from a project row pre-filters the list; the filter stays editable
   // from here, so the screen is one list rather than two.
@@ -83,7 +87,7 @@ export function TasksScreen() {
   const header = (
     <HeaderBar
       title={projectId ? (projectsById.get(projectId)?.name ?? 'Tasks') : 'Tasks'}
-      onBack={() => router.back()}
+      onBack={goBack}
       action={
         <Menu
           visible={projectMenu}
