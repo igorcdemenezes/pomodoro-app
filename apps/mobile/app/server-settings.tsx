@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { Button, Card, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
 
 import { healthQueryKey, useHealth } from '../src/api/health';
 import {
@@ -12,8 +11,13 @@ import {
   resetApiBaseUrl,
   setApiBaseUrl,
 } from '../src/config/api-config';
-import { Screen } from '../src/ui/screen';
+import { color } from '../src/theme/tokens';
+import { Button } from '../src/ui/button';
+import { TextField } from '../src/ui/field';
+import { HeaderBar, Screen } from '../src/ui/screen';
 import { ErrorState, LoadingState } from '../src/ui/states';
+import { Card, Dot } from '../src/ui/surface';
+import { Text } from '../src/ui/text';
 
 /**
  * Where the build is pointed at a backend.
@@ -23,7 +27,6 @@ import { ErrorState, LoadingState } from '../src/ui/states';
  * against whatever machine is running the API.
  */
 export default function ServerSettingsScreen() {
-  const theme = useTheme();
   const router = useRouter();
   const client = useQueryClient();
   const health = useHealth();
@@ -67,79 +70,70 @@ export default function ServerSettingsScreen() {
   const valid = isValidBaseUrl(draft);
 
   return (
-    <Screen scrollable>
-      <Text variant="headlineSmall">Server</Text>
-      <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+    <Screen scrollable header={<HeaderBar title="Server" onBack={() => router.back()} />}>
+      <Text variant="body" tone="secondary">
         Point this build at the backend you are running.
       </Text>
 
-      <Card mode="outlined">
-        <Card.Title title="Connection" subtitle={baseUrl || '—'} />
-        <Card.Content style={styles.status}>
-          {health.isPending ? (
-            <LoadingState title="Contacting the server…" />
-          ) : health.isError ? (
-            <ErrorState
-              title="Cannot reach the API"
-              description={
-                'Check that the backend is running and reachable from this device. On a ' +
-                'physical device use the host machine address on your network, not localhost.'
-              }
-              onRetry={() => void health.refetch()}
-              retrying={health.isFetching}
-            />
-          ) : (
-            <View style={styles.ok}>
-              <Text variant="titleMedium" style={{ color: theme.colors.secondary }}>
+      <Card style={styles.status}>
+        {health.isPending ? (
+          <LoadingState title="Contacting the server…" />
+        ) : health.isError ? (
+          <ErrorState
+            title="Cannot reach the API"
+            description={
+              'Check that the backend is running and reachable from this device. On a ' +
+              'physical device use the host machine address on your network, not localhost.'
+            }
+            onRetry={() => void health.refetch()}
+            retrying={health.isFetching}
+          />
+        ) : (
+          <View style={styles.ok}>
+            <View style={styles.okHead}>
+              <Dot size={8} color={color.positive} />
+              <Text variant="sectionHeading" tone="positive">
                 Connected
               </Text>
-              <Text variant="bodySmall">
-                Database {health.data.database} · up for {health.data.uptimeSeconds}s
-              </Text>
             </View>
-          )}
-        </Card.Content>
+            <Text variant="caption" tone="secondary">
+              Database {health.data.database} · up for {health.data.uptimeSeconds}s
+            </Text>
+          </View>
+        )}
       </Card>
 
-      <TextInput
-        mode="outlined"
-        label="API base URL"
-        value={draft}
-        onChangeText={setDraft}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="url"
-        placeholder="http://192.168.0.10:3000/api/v1"
-      />
-      <HelperText type={valid ? 'info' : 'error'} visible>
-        {valid
-          ? 'An Android emulator reaches the host machine at 10.0.2.2.'
-          : 'Enter a valid http or https address.'}
-      </HelperText>
-
-      <View style={styles.actions}>
-        <Button mode="text" onPress={() => void restore()} disabled={saving}>
-          Reset
-        </Button>
-        <Button
-          mode="contained"
-          onPress={() => void apply()}
-          disabled={!dirty || !valid || saving}
-          loading={saving}
-        >
-          Save and retry
-        </Button>
+      <View style={styles.form}>
+        <TextField
+          label="API base URL"
+          value={draft}
+          onChangeText={setDraft}
+          keyboardType="url"
+          placeholder="http://192.168.0.10:3000/api/v1"
+          error={valid ? undefined : 'Enter a valid http or https address.'}
+          hint="An Android emulator reaches the host machine at 10.0.2.2."
+        />
       </View>
 
-      <Button mode="text" onPress={() => router.back()}>
-        Close
-      </Button>
+      <View style={styles.actions}>
+        <Button label="Reset" variant="ghost" onPress={() => void restore()} disabled={saving} />
+        <Button
+          label="Save and retry"
+          onPress={() => void apply()}
+          disabled={!dirty || !valid}
+          loading={saving}
+          style={styles.save}
+        />
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  status: { minHeight: 150 },
-  ok: { alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 28 },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+  status: { marginTop: 20, minHeight: 170, justifyContent: 'center', padding: 16 },
+  ok: { alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 28 },
+  okHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  form: { marginTop: 20 },
+  actions: { marginTop: 20, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  save: { flex: 1 },
 });
