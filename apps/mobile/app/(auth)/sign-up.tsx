@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
 
 import { useAuthActions } from '../../src/auth/use-auth-actions';
+import { useGoBack } from '../../src/navigation/use-go-back';
 import { color } from '../../src/theme/tokens';
 import { Button, TextButton } from '../../src/ui/button';
 import { TextField } from '../../src/ui/field';
@@ -13,8 +13,10 @@ import { Text } from '../../src/ui/text';
 const MIN_PASSWORD_LENGTH = 8;
 
 export default function SignUpScreen() {
-  const router = useRouter();
   const { signUp, pending, error, clearError } = useAuthActions();
+  // Sign-in is where this screen is opened from, and where both ways out of it
+  // go when it was opened from nowhere.
+  const goBack = useGoBack('/(auth)/sign-in');
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -47,11 +49,7 @@ export default function SignUpScreen() {
   const takenEmail = error?.code === 'EMAIL_ALREADY_REGISTERED';
 
   return (
-    <Screen
-      scrollable
-      header={<HeaderBar onBack={() => router.back()} />}
-      contentStyle={styles.content}
-    >
+    <Screen scrollable header={<HeaderBar onBack={goBack} />} contentStyle={styles.content}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.flex}
@@ -117,7 +115,7 @@ export default function SignUpScreen() {
           <Text variant="label" tone="secondary">
             Already registered?
           </Text>
-          <TextButton label="Sign in" disabled={pending} onPress={() => router.back()} />
+          <TextButton label="Sign in" disabled={pending} onPress={goBack} />
         </View>
       </KeyboardAvoidingView>
     </Screen>

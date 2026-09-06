@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
 
 import { healthQueryKey, useHealth } from '../src/api/health';
 import {
@@ -11,6 +10,7 @@ import {
   resetApiBaseUrl,
   setApiBaseUrl,
 } from '../src/config/api-config';
+import { useGoBack } from '../src/navigation/use-go-back';
 import { color } from '../src/theme/tokens';
 import { Button } from '../src/ui/button';
 import { TextField } from '../src/ui/field';
@@ -27,9 +27,11 @@ import { Text } from '../src/ui/text';
  * against whatever machine is running the API.
  */
 export default function ServerSettingsScreen() {
-  const router = useRouter();
   const client = useQueryClient();
   const health = useHealth();
+  // Reachable from the sign-in screen and from Profile, and — pointed at by a
+  // link or restored on launch — reachable with nothing behind it.
+  const goBack = useGoBack('/');
 
   const [baseUrl, setBaseUrl] = useState('');
   const [draft, setDraft] = useState('');
@@ -70,7 +72,7 @@ export default function ServerSettingsScreen() {
   const valid = isValidBaseUrl(draft);
 
   return (
-    <Screen scrollable header={<HeaderBar title="Server" onBack={() => router.back()} />}>
+    <Screen scrollable header={<HeaderBar title="Server" onBack={goBack} />}>
       <Text variant="body" tone="secondary">
         Point this build at the backend you are running.
       </Text>
