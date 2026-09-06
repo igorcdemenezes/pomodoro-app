@@ -24,17 +24,3 @@ export const PROJECT_COLORS = [
   '#7A6A55', // stone
   '#3D4C8A', // indigo
 ] as const;
-
-/**
- * The colour a project is drawn in.
- *
- * Kept until the statistics breakdown is redrawn: it used to step a colour for
- * the dark palette, and there is no dark palette any more. A colour set before
- * this list — or set outside the app — is returned exactly as stored rather
- * than snapped to the nearest slot, since the stored value is the project's
- * identity and rewriting it would change what the user sees without them
- * having asked for anything.
- */
-export function projectColor(color: string, _dark = false): string {
-  return color;
-}

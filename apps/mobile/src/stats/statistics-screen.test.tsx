@@ -29,6 +29,9 @@ const DAILY: DailyPoint[] = [
   { day: '2026-09-03', focusedSeconds: 5100, completedSessions: 3 },
 ];
 
+/** The seven days before the window on screen, for the trend. */
+const PREVIOUS: DailyPoint[] = [{ day: '2026-08-29', focusedSeconds: 6000, completedSessions: 4 }];
+
 const BY_PROJECT: ProjectBreakdown[] = [
   {
     projectId: 'p1000000-0000-4000-8000-000000000001',
@@ -62,6 +65,7 @@ describe('statistics screen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 8, 3, 15, 0));
     api.fetchSummary.mockResolvedValue(summary());
     api.fetchDaily.mockResolvedValue(DAILY);
     api.fetchByProject.mockResolvedValue(BY_PROJECT);
@@ -71,14 +75,26 @@ describe('statistics screen', () => {
     jest.useRealTimers();
   });
 
-  it('reports the headline figures for the range', async () => {
+  it('reports the headline figure for the range', async () => {
     await renderScreen();
 
-    // By label, not by text: 1h 25m is also the peak day and the top project,
-    // and the assertion is about the tile.
-    expect(await screen.findByLabelText('Focused: 1h 25m')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Completion: 80%')).toBeOnTheScreen();
-    expect(screen.getByText('2 abandoned')).toBeOnTheScreen();
+    expect(await screen.findByText('FOCUSED THIS WEEK')).toBeOnTheScreen();
+    // How many sessions that time came out of, and how many were abandoned,
+    // ride along with the chart they describe.
+    expect(screen.getByText('8 sessions · 2 abandoned')).toBeOnTheScreen();
+  });
+
+  it('says how the window compares with the one before it', async () => {
+    // The API only ever answers about one window, so the trend is two calls.
+    // The window on screen ends today and covers seven days; the one before it
+    // ends the day before that.
+    api.fetchDaily.mockImplementation((from) =>
+      Promise.resolve(from === '2026-08-28' ? DAILY : PREVIOUS),
+    );
+
+    await renderScreen();
+
+    expect(await screen.findByLabelText('35m more than the previous week')).toBeOnTheScreen();
   });
 
   it('labels every day of the chart, including the ones with no focus', async () => {
@@ -89,13 +105,14 @@ describe('statistics screen', () => {
     expect(screen.getByLabelText('3 Sep: 1h 25m')).toBeOnTheScreen();
   });
 
-  it('reads out the day that is tapped', async () => {
+  it('calls out the day that is tapped', async () => {
     await renderScreen();
 
-    // The 2nd is not an axis end, so finding it proves the reading moved.
-    await fireEvent.press(await screen.findByLabelText('2 Sep: —'));
+    // The chart opens on the most recent day; tapping an earlier one has to
+    // move the callout, which is the only reading of an exact figure it has.
+    await fireEvent.press(await screen.findByLabelText('1 Sep: 50m'));
 
-    expect(screen.getByText('2 Sep')).toBeOnTheScreen();
+    expect(screen.getByText('50m')).toBeOnTheScreen();
   });
 
   it('names every project in the breakdown, so colour is never the only clue', async () => {
@@ -108,8 +125,9 @@ describe('statistics screen', () => {
   it('asks the server again when the range changes', async () => {
     await renderScreen();
 
-    await screen.findByLabelText('Completion: 80%');
-    await fireEvent.press(screen.getByText('Month'));
+    await screen.findByText('FOCUSED THIS WEEK');
+    await fireEvent.press(screen.getByLabelText('Period: Week'));
+    await fireEvent.press(await screen.findByText('Month'));
 
     await waitFor(() => expect(api.fetchSummary).toHaveBeenCalledWith('month'));
     expect(api.fetchByProject).toHaveBeenCalledWith('month');

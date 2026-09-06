@@ -1,7 +1,8 @@
 import { StyleSheet, View } from 'react-native';
-import { Text, useTheme } from 'react-native-paper';
 
-import { projectColor } from '../theme/project-colors';
+import { color } from '../theme/tokens';
+import { Dot, Meter } from '../ui/surface';
+import { Text } from '../ui/text';
 import { formatDuration } from './duration';
 import type { ProjectBreakdown } from './stats-types';
 
@@ -14,57 +15,52 @@ import type { ProjectBreakdown } from './stats-types';
  * never carried by colour alone — which is also what licenses the palette's
  * lower-contrast slots.
  *
- * The colour is the project's own, so a project keeps its colour when a filter
- * changes which projects are on screen.
+ * The bar is a share of the whole window, not of the leader, so the percentage
+ * beside it and the length of it are the same statement made twice.
  */
 export function ProjectBars({ items }: { items: ProjectBreakdown[] }) {
-  const theme = useTheme();
+  const total = items.reduce((sum, item) => sum + item.focusedSeconds, 0);
 
-  const peak = Math.max(...items.map((item) => item.focusedSeconds), 0);
-
-  if (peak === 0) return null;
+  if (total === 0) return null;
 
   return (
     <View style={styles.container}>
       {items
         .filter((item) => item.focusedSeconds > 0)
-        .map((item) => (
-          <View key={item.projectId ?? 'unfiled'} style={styles.row}>
-            <View style={styles.labels}>
-              <Text variant="bodyMedium" numberOfLines={1} style={styles.name}>
-                {item.projectName}
-              </Text>
-              <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-                {formatDuration(item.focusedSeconds)}
-              </Text>
-            </View>
-            <View style={[styles.track, { backgroundColor: theme.colors.surfaceVariant }]}>
-              <View
-                style={[
-                  styles.fill,
-                  {
-                    width: `${(item.focusedSeconds / peak) * 100}%`,
-                    // Sessions filed under no project get the neutral outline
-                    // colour: "unfiled" is the absence of a project, not one
-                    // more project competing for a hue.
-                    backgroundColor: item.projectId
-                      ? projectColor(item.color, theme.dark)
-                      : theme.colors.outline,
-                  },
-                ]}
+        .map((item) => {
+          const share = item.focusedSeconds / total;
+          // Sessions filed under no project get the neutral icon grey:
+          // "unfiled" is the absence of a project, not one more project
+          // competing for a hue.
+          const ink = item.projectId ? item.color : color.inkIcon;
+
+          return (
+            <View key={item.projectId ?? 'unfiled'} style={styles.row}>
+              <View style={styles.labels}>
+                <Dot color={ink} />
+                <Text variant="bodyStrong" numberOfLines={1} style={styles.name}>
+                  {item.projectName}
+                </Text>
+                <Text variant="numeralMicro" tone="secondary">
+                  {formatDuration(item.focusedSeconds)} · {Math.round(share * 100)}%
+                </Text>
+              </View>
+              <Meter
+                fraction={share}
+                color={ink}
+                height={6}
+                label={`${item.projectName}, ${Math.round(share * 100)}% of focus time`}
               />
             </View>
-          </View>
-        ))}
+          );
+        })}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { gap: 12 },
-  row: { gap: 4 },
-  labels: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  name: { flexShrink: 1 },
-  track: { height: 10, borderRadius: 5, overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: 5 },
+  container: { gap: 14 },
+  row: { gap: 6 },
+  labels: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  name: { flex: 1 },
 });
