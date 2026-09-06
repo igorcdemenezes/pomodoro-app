@@ -35,10 +35,13 @@ async function main(): Promise<void> {
       name: 'Demo User',
       passwordHash: await hashPassword(DEMO_PASSWORD),
       projects: {
+        // The first three slots of the client's project palette, in order.
+        // None of them is red: red is the brand there and it means FOCUS on
+        // the timer, so a project wearing it would claim a meaning it has not.
         create: [
-          { name: 'Deep Work', color: '#2A78D6' },
-          { name: 'Studies', color: '#EB6834' },
-          { name: 'Side Project', color: '#1BAF7A' },
+          { name: 'Deep Work', color: '#6E56CF' },
+          { name: 'Studies', color: '#1F9A62' },
+          { name: 'Side Project', color: '#CC7A1A' },
         ],
       },
     },
