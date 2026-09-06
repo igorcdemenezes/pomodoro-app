@@ -14,7 +14,7 @@
     "android": {
       "package": "app.pomodoro.client",
       "adaptiveIcon": {
-        "backgroundColor": "#141416",
+        "backgroundColor": "#FBFAF9",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -34,7 +34,7 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#141416"
+          "backgroundColor": "#FBFAF9"
         }
       ],
       [
