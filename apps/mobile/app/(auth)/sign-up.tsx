@@ -1,21 +1,24 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
-import { Link } from 'expo-router';
-import { Button, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
+import { useRouter } from 'expo-router';
 
 import { useAuthActions } from '../../src/auth/use-auth-actions';
-import { Screen } from '../../src/ui/screen';
+import { color } from '../../src/theme/tokens';
+import { Button, TextButton } from '../../src/ui/button';
+import { TextField } from '../../src/ui/field';
+import { Icon } from '../../src/ui/icon';
+import { HeaderBar, Screen } from '../../src/ui/screen';
+import { Text } from '../../src/ui/text';
 
 const MIN_PASSWORD_LENGTH = 8;
 
 export default function SignUpScreen() {
-  const theme = useTheme();
+  const router = useRouter();
   const { signUp, pending, error, clearError } = useAuthActions();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [revealPassword, setRevealPassword] = useState(false);
   const [touched, setTouched] = useState(false);
 
   // The same bounds the API enforces, checked here so a mistake is caught
@@ -34,98 +37,105 @@ export default function SignUpScreen() {
     if (canSubmit) void signUp({ name: name.trim(), email: email.trim(), password });
   };
 
+  const change = (set: (value: string) => void) => (value: string) => {
+    set(value);
+    clearError();
+  };
+
+  // An address the server has already seen is a fact about the email field, so
+  // it is reported on the field rather than as a note under the button.
+  const takenEmail = error?.code === 'EMAIL_ALREADY_REGISTERED';
+
   return (
-    <Screen scrollable>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.header}>
-          <Text variant="headlineMedium">Create an account</Text>
-          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-            Your projects and focus history sync across your devices.
-          </Text>
+    <Screen
+      scrollable
+      header={<HeaderBar onBack={() => router.back()} />}
+      contentStyle={styles.content}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.flex}
+      >
+        <Text variant="authTitle">Create an account</Text>
+        <Text variant="body" tone="secondary" style={styles.subtitle}>
+          Your projects and focus history sync across your devices.
+        </Text>
+
+        <View style={styles.form}>
+          <TextField
+            label="Name"
+            value={name}
+            onChangeText={change(setName)}
+            error={nameInvalid ? 'Use at least two characters.' : undefined}
+            autoCapitalize="words"
+            autoComplete="name"
+            editable={!pending}
+          />
+          <TextField
+            label="Email"
+            value={email}
+            onChangeText={change(setEmail)}
+            error={
+              emailInvalid
+                ? 'Enter a valid email address.'
+                : takenEmail
+                  ? 'An account with this email already exists.'
+                  : undefined
+            }
+            keyboardType="email-address"
+            autoComplete="email"
+            editable={!pending}
+          />
+          <TextField
+            label="Password"
+            value={password}
+            onChangeText={change(setPassword)}
+            error={passwordInvalid ? `Use at least ${MIN_PASSWORD_LENGTH} characters.` : undefined}
+            hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
+            secure
+            revealable
+            autoComplete="new-password"
+            editable={!pending}
+            onSubmitEditing={submit}
+          />
         </View>
 
-        <TextInput
-          mode="outlined"
-          label="Name"
-          value={name}
-          onChangeText={(value) => {
-            setName(value);
-            clearError();
-          }}
-          autoComplete="name"
-          error={nameInvalid}
-          disabled={pending}
-        />
-        <HelperText type="error" visible={nameInvalid}>
-          Use at least two characters.
-        </HelperText>
-
-        <TextInput
-          mode="outlined"
-          label="Email"
-          value={email}
-          onChangeText={(value) => {
-            setEmail(value);
-            clearError();
-          }}
-          autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          error={emailInvalid}
-          disabled={pending}
-        />
-        <HelperText type="error" visible={emailInvalid}>
-          Enter a valid email address.
-        </HelperText>
-
-        <TextInput
-          mode="outlined"
-          label="Password"
-          value={password}
-          onChangeText={(value) => {
-            setPassword(value);
-            clearError();
-          }}
-          secureTextEntry={!revealPassword}
-          autoCapitalize="none"
-          autoComplete="new-password"
-          error={passwordInvalid}
-          disabled={pending}
-          onSubmitEditing={submit}
-          right={
-            <TextInput.Icon
-              icon={revealPassword ? 'eye-off' : 'eye'}
-              onPress={() => setRevealPassword((visible) => !visible)}
-              accessibilityLabel={revealPassword ? 'Hide password' : 'Show password'}
-            />
-          }
-        />
-        <HelperText type={passwordInvalid ? 'error' : 'info'} visible>
-          At least {MIN_PASSWORD_LENGTH} characters.
-        </HelperText>
-
-        {error ? (
-          <HelperText type="error" visible padding="none">
-            {error.isOffline
-              ? 'Could not reach the server. Check the API address on the sign-in screen.'
-              : error.message}
-          </HelperText>
+        {error && !takenEmail ? (
+          <View style={styles.failure}>
+            <Icon name="alert" size={16} color={color.accent} strokeWidth={2} />
+            <Text variant="label" tone="accent" style={styles.flex}>
+              {error.isOffline
+                ? 'Could not reach the server. Check the API address on the sign-in screen.'
+                : error.message}
+            </Text>
+          </View>
         ) : null}
 
-        <Button mode="contained" onPress={submit} loading={pending} disabled={pending}>
-          Create account
-        </Button>
+        <Button label="Create account" onPress={submit} loading={pending} style={styles.submit} />
 
-        <Link href="/(auth)/sign-in" asChild>
-          <Button mode="text" disabled={pending}>
-            I already have an account
-          </Button>
-        </Link>
+        <View style={styles.switch}>
+          <Text variant="label" tone="secondary">
+            Already registered?
+          </Text>
+          <TextButton label="Sign in" disabled={pending} onPress={() => router.back()} />
+        </View>
       </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  header: { gap: 4, marginBottom: 16 },
+  content: { paddingTop: 8 },
+  flex: { flex: 1 },
+  subtitle: { marginTop: 6 },
+  form: { marginTop: 28, gap: 18 },
+  failure: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 16 },
+  submit: { marginTop: 28 },
+  switch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 20,
+  },
 });
