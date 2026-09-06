@@ -1,27 +1,23 @@
 import { useMemo, useState } from 'react';
-import { SectionList, StyleSheet, View } from 'react-native';
-import {
-  ActivityIndicator,
-  Divider,
-  List,
-  SegmentedButtons,
-  Text,
-  useTheme,
-} from 'react-native-paper';
+import { ActivityIndicator, SectionList, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import { SESSION_KIND_LABELS } from '../sessions/session-types';
 import type { Session } from '../sessions/session-types';
 import { formatDuration } from '../stats/duration';
 import { useTasks } from '../tasks/use-tasks';
-import { Screen } from '../ui/screen';
+import { color, radius, sessionColor } from '../theme/tokens';
+import { Chip, ChipRow } from '../ui/chip';
+import { HeaderBar, Screen } from '../ui/screen';
 import { EmptyState, ErrorState, LoadingState } from '../ui/states';
+import { Text } from '../ui/text';
 import { formatClock, groupByDay } from './history-grouping';
 import { HISTORY_RANGES, HISTORY_RANGE_LABELS } from './history-range';
 import type { HistoryRange } from './history-range';
 import { useHistory } from './use-history';
 
 export function HistoryScreen() {
-  const theme = useTheme();
+  const router = useRouter();
   const [range, setRange] = useState<HistoryRange>('week');
 
   const history = useHistory(range);
@@ -39,11 +35,13 @@ export function HistoryScreen() {
     [tasks.data],
   );
 
+  const header = <HeaderBar title="History" onBack={() => router.back()} />;
+
   if (history.isPending) return <LoadingState title="Loading your history…" />;
 
   if (history.isError) {
     return (
-      <Screen ignoreTopInset>
+      <Screen header={header}>
         <ErrorState
           title="Could not load your history"
           description={history.error.message}
@@ -55,23 +53,26 @@ export function HistoryScreen() {
   }
 
   return (
-    <Screen ignoreTopInset>
-      <SegmentedButtons
-        value={range}
-        onValueChange={(value) => setRange(value as HistoryRange)}
-        buttons={HISTORY_RANGES.map((value) => ({
-          value,
-          label: HISTORY_RANGE_LABELS[value],
-        }))}
-      />
+    <Screen header={header} contentStyle={styles.content}>
+      <ChipRow>
+        {HISTORY_RANGES.map((value) => (
+          <Chip
+            key={value}
+            label={HISTORY_RANGE_LABELS[value]}
+            selected={range === value}
+            onPress={() => setRange(value)}
+          />
+        ))}
+      </ChipRow>
 
       <SectionList
+        style={styles.flex}
         testID="history-list"
         sections={sections}
         keyExtractor={(session) => session.id}
         stickySectionHeadersEnabled={false}
         contentContainerStyle={styles.list}
-        ItemSeparatorComponent={Divider}
+        showsVerticalScrollIndicator={false}
         refreshing={history.isRefetching}
         onRefresh={() => void history.refetch()}
         // Asking early enough that the next page usually lands before the user
@@ -80,26 +81,58 @@ export function HistoryScreen() {
         onEndReached={() => {
           if (history.hasNextPage && !history.isFetchingNextPage) void history.fetchNextPage();
         }}
-        renderSectionHeader={({ section }) => (
-          <Text variant="titleSmall" style={styles.day}>
-            {section.title}
-          </Text>
-        )}
-        renderItem={({ item }) => (
-          <List.Item
-            title={
-              item.taskId ? (taskTitles.get(item.taskId) ?? 'Task') : SESSION_KIND_LABELS[item.kind]
-            }
-            description={describe(item)}
-            titleStyle={item.status === 'CANCELLED' ? styles.cancelled : undefined}
-            left={(props) => <List.Icon {...props} icon={icon(item)} />}
-            right={() => (
-              <Text variant="labelLarge" style={styles.time}>
+        renderSectionHeader={({ section }) => {
+          // A day split across two pages would show a total computed from half
+          // of it — and disagree with the Statistics screen, where the same
+          // figure is aggregated in SQL over every session. Only the last
+          // section can be short, and only while there is more to fetch.
+          const partial = history.hasNextPage && section === sections[sections.length - 1];
+
+          return (
+            <View style={styles.day}>
+              <Text variant="overline">{section.title.toUpperCase()}</Text>
+              {partial ? null : (
+                <Text variant="numeralMicro" tone="secondary">
+                  {formatDuration(focusedSeconds(section.data))}
+                </Text>
+              )}
+            </View>
+          );
+        }}
+        renderItem={({ item }) => {
+          const cancelled = item.status === 'CANCELLED';
+
+          return (
+            <View style={styles.row}>
+              <View
+                style={[
+                  styles.bar,
+                  {
+                    backgroundColor: cancelled ? color.controlBorder : sessionColor[item.kind].fill,
+                  },
+                ]}
+              />
+              <View style={styles.body}>
+                <View style={styles.titleRow}>
+                  <Text variant="bodyStrong" tone={cancelled ? 'secondary' : 'primary'}>
+                    {describe(item)}
+                  </Text>
+                  {cancelled ? (
+                    <Text variant="badge" tone="secondary" style={styles.badge}>
+                      CANCELLED
+                    </Text>
+                  ) : null}
+                </View>
+                <Text variant="label" tone="secondary" numberOfLines={1}>
+                  {item.taskId ? (taskTitles.get(item.taskId) ?? 'Task') : 'No task'}
+                </Text>
+              </View>
+              <Text variant="numeralMicro" tone="secondary">
                 {formatClock(item.startedAt)}
               </Text>
-            )}
-          />
-        )}
+            </View>
+          );
+        }}
         ListEmptyComponent={
           <EmptyState
             title="Nothing recorded yet"
@@ -113,14 +146,14 @@ export function HistoryScreen() {
         ListFooterComponent={
           history.isFetchingNextPage ? (
             <View style={styles.footer}>
-              <ActivityIndicator accessibilityLabel="Loading more sessions" />
+              <ActivityIndicator accessibilityLabel="Loading more sessions" color={color.accent} />
             </View>
           ) : null
         }
       />
 
       {tasks.isError ? (
-        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+        <Text variant="caption" tone="secondary">
           Task names could not be loaded; sessions are listed by kind.
         </Text>
       ) : null}
@@ -129,29 +162,63 @@ export function HistoryScreen() {
 }
 
 /**
- * What the session was and how much of it happened.
+ * The focus time a day actually holds.
  *
- * Cancelled sessions report the time actually run, not the time booked — the
- * whole point of abandoning one is that it did not last as long as planned.
+ * Breaks and abandoned sessions are excluded so the figure means the same thing
+ * as the one on the Statistics screen; a day header that counted rest as focus
+ * would quietly contradict the chart two taps away.
  */
-function describe(session: Session): string {
-  const parts = [SESSION_KIND_LABELS[session.kind], formatDuration(session.elapsedSec)];
-
-  if (session.status === 'CANCELLED') parts.push('Cancelled');
-
-  return parts.join(' · ');
+function focusedSeconds(sessions: Session[]): number {
+  return sessions
+    .filter((session) => session.kind === 'FOCUS' && session.status === 'COMPLETED')
+    .reduce((total, session) => total + session.elapsedSec, 0);
 }
 
-function icon(session: Session): string {
-  if (session.status === 'CANCELLED') return 'close-circle-outline';
+/**
+ * What the session was and how much of it happened.
+ *
+ * A cancelled session reports the time actually run against the time booked —
+ * the whole point of abandoning one is that it did not last as long as planned,
+ * and `6 of 25 min` says that where a bare `6 min` would not.
+ */
+function describe(session: Session): string {
+  const label = SESSION_KIND_LABELS[session.kind];
+  const booked = Math.round(session.durationSec / 60);
 
-  return session.kind === 'FOCUS' ? 'check-circle-outline' : 'coffee-outline';
+  if (session.status === 'CANCELLED') {
+    return `${label} · ${Math.round(session.elapsedSec / 60)} of ${booked} min`;
+  }
+
+  return `${label} · ${booked} min`;
 }
 
 const styles = StyleSheet.create({
-  list: { flexGrow: 1 },
-  day: { paddingTop: 16, paddingBottom: 4 },
-  time: { alignSelf: 'center' },
-  cancelled: { textDecorationLine: 'line-through' },
+  content: { paddingTop: 8 },
+  flex: { flex: 1 },
+  list: { flexGrow: 1, paddingBottom: 8 },
+  day: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingTop: 22,
+    paddingBottom: 2,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: color.hairline,
+  },
+  bar: { width: 3, height: 34, borderRadius: 2 },
+  body: { flex: 1, gap: 2 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  badge: {
+    borderWidth: 1,
+    borderColor: color.controlBorder,
+    borderRadius: radius.inner - 4,
+    paddingHorizontal: 6,
+  },
   footer: { paddingVertical: 16 },
 });

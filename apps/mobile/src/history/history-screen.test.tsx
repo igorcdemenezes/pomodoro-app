@@ -11,6 +11,10 @@ import { HistoryScreen } from './history-screen';
 jest.mock('./history-api');
 jest.mock('../tasks/tasks-api');
 
+// Prefixed with `mock` so the factory below may close over it.
+const mockBack = jest.fn();
+jest.mock('expo-router', () => ({ useRouter: () => ({ back: mockBack }) }));
+
 const api = jest.mocked(historyApi);
 const tasks = jest.mocked(tasksApi);
 
@@ -84,17 +88,21 @@ describe('history screen', () => {
   it('files each session under the day it happened', async () => {
     await renderScreen();
 
-    expect(await screen.findByText('Today')).toBeOnTheScreen();
-    expect(screen.getByText('Yesterday')).toBeOnTheScreen();
+    expect(await screen.findByText('TODAY')).toBeOnTheScreen();
+    expect(screen.getByText('YESTERDAY')).toBeOnTheScreen();
     expect(screen.getByText('09:00')).toBeOnTheScreen();
+    // The day total counts focus only, so it means the same thing as the
+    // figure on the Statistics screen.
+    expect(screen.getByText('25m')).toBeOnTheScreen();
   });
 
   it('names the task a session was run against', async () => {
     await renderScreen();
 
     expect(await screen.findByText('Write the ADR')).toBeOnTheScreen();
-    // A session with no task falls back to what it was.
-    expect(screen.getByText('Short break')).toBeOnTheScreen();
+    // A session with no task says so rather than borrowing another's name.
+    expect(screen.getByText('No task')).toBeOnTheScreen();
+    expect(screen.getByText('Short break · 5 min')).toBeOnTheScreen();
   });
 
   it('reports the time an abandoned session actually ran', async () => {
@@ -105,8 +113,10 @@ describe('history screen', () => {
 
     await renderScreen();
 
-    // Seven minutes run, not the twenty-five that were booked.
-    expect(await screen.findByText('Focus · 7m · Cancelled')).toBeOnTheScreen();
+    // Seven minutes run out of the twenty-five that were booked — both, so the
+    // row says what was abandoned as well as what happened.
+    expect(await screen.findByText('Focus · 7 of 25 min')).toBeOnTheScreen();
+    expect(screen.getByText('CANCELLED')).toBeOnTheScreen();
   });
 
   it('asks for the next page when the list runs out', async () => {
@@ -116,7 +126,7 @@ describe('history screen', () => {
     });
 
     await renderScreen();
-    await screen.findByText('Today');
+    await screen.findByText('TODAY');
 
     await fireEvent(screen.getByTestId('history-list'), 'endReached');
 
@@ -130,7 +140,7 @@ describe('history screen', () => {
   it('drops the lower bound when the whole history is asked for', async () => {
     await renderScreen();
 
-    await screen.findByText('Today');
+    await screen.findByText('TODAY');
     await fireEvent.press(screen.getByText('All'));
 
     await waitFor(() =>
