@@ -1,18 +1,18 @@
 import { Stack } from 'expo-router';
 
+import { color } from '../../src/theme/tokens';
+
 /**
- * Signed-in area. The tab bar arrives with the remaining feature screens; a
- * stack keeps navigation working until then.
+ * The signed-in area.
+ *
+ * A stack around the tabs, so Tasks and History push over the tab bar instead
+ * of living in it: both are opened *from* somewhere — a project, the dashboard —
+ * and a tab that is only ever reached by drilling in is a tab nobody uses.
  */
 export default function AppLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="focus" options={{ headerShown: true, title: 'Focus' }} />
-      <Stack.Screen name="projects" options={{ headerShown: true, title: 'Projects' }} />
-      <Stack.Screen name="tasks" options={{ headerShown: true, title: 'Tasks' }} />
-      <Stack.Screen name="statistics" options={{ headerShown: true, title: 'Statistics' }} />
-      <Stack.Screen name="history" options={{ headerShown: true, title: 'History' }} />
-      <Stack.Screen name="profile" options={{ headerShown: true, title: 'Profile' }} />
-    </Stack>
+    <Stack
+      screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.canvas } }}
+    />
   );
 }
