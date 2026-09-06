@@ -14,7 +14,12 @@ jest.mock('../projects/projects-api');
 
 // Prefixed with `mock` so the factory below may close over it.
 const mockParams: { projectId?: string } = {};
-jest.mock('expo-router', () => ({ useLocalSearchParams: () => mockParams }));
+const mockPush = jest.fn();
+const mockBack = jest.fn();
+jest.mock('expo-router', () => ({
+  useLocalSearchParams: () => mockParams,
+  useRouter: () => ({ push: mockPush, back: mockBack }),
+}));
 
 const api = jest.mocked(tasksApi);
 const projects = jest.mocked(projectsApi);
@@ -82,7 +87,7 @@ describe('tasks screen', () => {
     await renderScreen();
 
     expect(await screen.findByText('Write the ADR')).toBeOnTheScreen();
-    expect(await screen.findByText('Deep Work · 1/4 pomodoros')).toBeOnTheScreen();
+    expect(await screen.findByText('Deep Work · 1 of 4')).toBeOnTheScreen();
   });
 
   it('files a new task under the project the list is filtered to', async () => {
@@ -137,6 +142,16 @@ describe('tasks screen', () => {
     await waitFor(() => expect(api.updateTask).toHaveBeenCalledWith(TASK_ID, { status: 'DONE' }));
   });
 
+  it('opens the timer on the task the play button belongs to', async () => {
+    api.fetchTasks.mockResolvedValue([task()]);
+
+    await renderScreen();
+
+    await fireEvent.press(await screen.findByLabelText('Focus on Write the ADR'));
+
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/focus', params: { taskId: TASK_ID } });
+  });
+
   it('explains why a task running a session cannot be deleted', async () => {
     api.fetchTasks.mockResolvedValue([task()]);
     api.deleteTask.mockRejectedValue(
@@ -145,8 +160,9 @@ describe('tasks screen', () => {
 
     await renderScreen();
 
-    await fireEvent.press(await screen.findByLabelText('Actions for Write the ADR'));
-    await fireEvent.press(await screen.findByText('Delete'));
+    // The actions a row has no room for are behind a long press.
+    await fireEvent(await screen.findByText('Write the ADR'), 'longPress');
+    await fireEvent.press(await screen.findByText('Delete task'));
     await fireEvent.press(await screen.findByText('Delete task'));
 
     expect(
