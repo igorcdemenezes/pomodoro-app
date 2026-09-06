@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { Button, Menu, Text, useTheme } from 'react-native-paper';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Menu } from 'react-native-paper';
 
 import type { Task } from '../tasks/task-types';
+import { color, radius, size } from '../theme/tokens';
+import { Icon } from '../ui/icon';
+import { Text } from '../ui/text';
 
 interface TaskPickerProps {
   tasks: Task[];
@@ -19,14 +22,13 @@ interface TaskPickerProps {
  * something untrue.
  */
 export function TaskPicker({ tasks, value, disabled, onChange }: TaskPickerProps) {
-  const theme = useTheme();
   const [open, setOpen] = useState(false);
 
   const selected = tasks.find((task) => task.id === value);
 
   if (tasks.length === 0) {
     return (
-      <Text variant="bodySmall" style={[styles.hint, { color: theme.colors.onSurfaceVariant }]}>
+      <Text variant="label" tone="secondary" style={styles.hint}>
         Add a task to record this focus time against something.
       </Text>
     );
@@ -38,32 +40,50 @@ export function TaskPicker({ tasks, value, disabled, onChange }: TaskPickerProps
   };
 
   return (
-    <View style={styles.row}>
-      <Menu
-        visible={open}
-        onDismiss={() => setOpen(false)}
-        anchor={
-          <Button
-            mode="outlined"
-            icon="checkbox-marked-circle-outline"
-            accessibilityLabel="Choose a task"
-            disabled={disabled}
-            onPress={() => setOpen(true)}
-          >
-            {selected ? selected.title : 'No task'}
-          </Button>
-        }
-      >
-        <Menu.Item title="No task" onPress={() => choose(undefined)} />
-        {tasks.map((task) => (
-          <Menu.Item key={task.id} title={task.title} onPress={() => choose(task.id)} />
-        ))}
-      </Menu>
-    </View>
+    <Menu
+      visible={open}
+      onDismiss={() => setOpen(false)}
+      anchor={
+        <Pressable
+          onPress={() => setOpen(true)}
+          disabled={disabled}
+          accessibilityRole="button"
+          accessibilityLabel={`Task: ${selected?.title ?? 'none'}`}
+          style={({ pressed }) => [styles.control, (pressed || disabled) && styles.pressed]}
+        >
+          <View style={styles.body}>
+            <Text variant="overline">TASK</Text>
+            <Text variant="bodyStrong" numberOfLines={1}>
+              {selected ? selected.title : 'No task'}
+            </Text>
+          </View>
+          <Icon name="chevronDown" size={20} color={color.inkSecondary} strokeWidth={2} />
+        </Pressable>
+      }
+    >
+      <Menu.Item title="No task" onPress={() => choose(undefined)} />
+      {tasks.map((task) => (
+        <Menu.Item key={task.id} title={task.title} onPress={() => choose(task.id)} />
+      ))}
+    </Menu>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { alignItems: 'center' },
+  control: {
+    alignSelf: 'stretch',
+    minHeight: size.control,
+    borderWidth: 1,
+    borderColor: color.controlBorder,
+    borderRadius: radius.field,
+    paddingVertical: 8,
+    paddingLeft: 16,
+    paddingRight: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  pressed: { opacity: 0.7 },
+  body: { flex: 1, gap: 2 },
   hint: { textAlign: 'center' },
 });

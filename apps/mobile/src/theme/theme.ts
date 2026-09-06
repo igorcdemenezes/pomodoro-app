@@ -1,7 +1,7 @@
 import { MD3LightTheme, configureFonts } from 'react-native-paper';
 import type { MD3Theme } from 'react-native-paper';
 
-import { color, font, radius, sessionColor } from './tokens';
+import { color, font, radius } from './tokens';
 
 /**
  * The Paper theme, derived from the design tokens.
@@ -64,16 +64,3 @@ export const theme: MD3Theme = {
     },
   },
 };
-
-/**
- * The session palette as flat fills.
- *
- * Kept until the timer screen is redrawn against `sessionColor`, which pairs
- * each fill with the darker ink its label needs. Nothing new should reach for
- * it.
- */
-export const sessionColors = {
-  FOCUS: sessionColor.FOCUS.fill,
-  SHORT_BREAK: sessionColor.SHORT_BREAK.fill,
-  LONG_BREAK: sessionColor.LONG_BREAK.fill,
-} as const;

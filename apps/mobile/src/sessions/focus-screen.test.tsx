@@ -6,6 +6,8 @@ import { resetServerClock } from '../api/server-clock';
 import type { Task } from '../tasks/task-types';
 import type { Session } from './session-types';
 import * as tasksApi from '../tasks/tasks-api';
+import * as projectsApi from '../projects/projects-api';
+import * as statsApi from '../stats/stats-api';
 import * as sessionNotification from './session-notification';
 import * as sessionsApi from './sessions-api';
 import { FocusScreen } from './focus-screen';
@@ -13,6 +15,9 @@ import { FocusScreen } from './focus-screen';
 jest.mock('./sessions-api');
 jest.mock('./session-notification');
 jest.mock('../tasks/tasks-api');
+jest.mock('../projects/projects-api');
+jest.mock('../stats/stats-api');
+jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({}) }));
 jest.mock('expo-keep-awake', () => ({
   activateKeepAwakeAsync: jest.fn(() => Promise.resolve()),
   deactivateKeepAwake: jest.fn(() => Promise.resolve()),
@@ -22,6 +27,8 @@ jest.mock('expo-crypto', () => ({ randomUUID: () => 'ffffffff-0000-4000-8000-000
 const api = jest.mocked(sessionsApi);
 const notifier = jest.mocked(sessionNotification);
 const tasks = jest.mocked(tasksApi);
+const projects = jest.mocked(projectsApi);
+const stats = jest.mocked(statsApi);
 
 const NOW = '2026-09-03T12:00:00.000Z';
 
@@ -81,6 +88,8 @@ describe('focus screen', () => {
     jest.useFakeTimers().setSystemTime(new Date(NOW));
     notifier.scheduleSessionEnd.mockResolvedValue('notification-1');
     tasks.fetchTasks.mockResolvedValue([task()]);
+    projects.fetchProjects.mockResolvedValue([]);
+    stats.fetchDaily.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -93,7 +102,9 @@ describe('focus screen', () => {
 
     await renderScreen();
 
-    expect(await screen.findByText('Start focus')).toBeOnTheScreen();
+    expect(await screen.findByText('START')).toBeOnTheScreen();
+    // The ring shows what a session would be worth before one exists.
+    expect(screen.getByText('of 25 min')).toBeOnTheScreen();
   });
 
   it('starts without a duration, leaving the length to the server preferences', async () => {
@@ -102,7 +113,7 @@ describe('focus screen', () => {
 
     await renderScreen();
 
-    await fireEvent.press(await screen.findByText('Start focus'));
+    await fireEvent.press(await screen.findByText('START'));
 
     // React Query hands the mutation function a context argument of its own, so
     // only the request body is worth asserting on.
@@ -121,7 +132,7 @@ describe('focus screen', () => {
     // Fifteen minutes to the deadline, whatever the payload's remaining count
     // claims and whatever this screen was doing before.
     expect(await screen.findByText('15:00')).toBeOnTheScreen();
-    expect(screen.getByText('Running')).toBeOnTheScreen();
+    expect(screen.getByText('PAUSE')).toBeOnTheScreen();
   });
 
   it('counts down as time passes, without asking the server again', async () => {
@@ -145,7 +156,7 @@ describe('focus screen', () => {
 
     await renderScreen();
 
-    expect(await screen.findByText('Paused')).toBeOnTheScreen();
+    expect(await screen.findByText('RESUME')).toBeOnTheScreen();
 
     jest.setSystemTime(new Date('2026-09-03T12:09:00.000Z'));
     await act(async () => {
@@ -153,7 +164,6 @@ describe('focus screen', () => {
     });
 
     expect(screen.getByText('10:00')).toBeOnTheScreen();
-    expect(screen.getByText('Resume')).toBeOnTheScreen();
   });
 
   it('adopts the session the server returns after a transition', async () => {
@@ -164,9 +174,9 @@ describe('focus screen', () => {
 
     await renderScreen();
 
-    await fireEvent.press(await screen.findByText('Pause'));
+    await fireEvent.press(await screen.findByText('PAUSE'));
 
-    expect(await screen.findByText('Resume')).toBeOnTheScreen();
+    expect(await screen.findByText('RESUME')).toBeOnTheScreen();
     expect(api.transitionSession).toHaveBeenCalledWith(
       'a5b6c7d8-0000-4000-8000-000000000001',
       'pause',
@@ -182,7 +192,7 @@ describe('focus screen', () => {
 
     await waitFor(() => expect(notifier.scheduleSessionEnd).toHaveBeenCalledTimes(1));
 
-    await fireEvent.press(await screen.findByText('Pause'));
+    await fireEvent.press(await screen.findByText('PAUSE'));
 
     // A paused session has no deadline, so the booking made for the old one
     // would go off during the pause.
@@ -212,9 +222,9 @@ describe('focus screen', () => {
 
     await renderScreen();
 
-    await fireEvent.press(await screen.findByLabelText('Choose a task'));
+    await fireEvent.press(await screen.findByLabelText('Task: none'));
     await fireEvent.press(await screen.findByText('Write the ADR'));
-    await fireEvent.press(screen.getByText('Start focus'));
+    await fireEvent.press(screen.getByText('START'));
 
     await waitFor(() => expect(api.startSession).toHaveBeenCalled());
     expect(api.startSession.mock.calls[0][0]).toEqual({
@@ -239,6 +249,6 @@ describe('focus screen', () => {
 
     await fireEvent.press(await screen.findByText('Short break'));
 
-    expect(screen.queryByLabelText('Choose a task')).not.toBeOnTheScreen();
+    expect(screen.queryByLabelText('Task: none')).not.toBeOnTheScreen();
   });
 });
