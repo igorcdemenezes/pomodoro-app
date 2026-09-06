@@ -14,8 +14,23 @@ export function useSummary(range: StatsRange) {
 }
 
 export function useDaily(range: StatsRange) {
-  const { from, to } = rangeDays(range);
+  return useDailyWindow(rangeDays(range));
+}
 
+/**
+ * The window before the one on screen, so the headline figure can say whether
+ * it is up or down.
+ *
+ * A trend needs two readings and the API only ever answers about one window, so
+ * the comparison is assembled here. It shares `useDaily`'s cache shape — the
+ * key is the pair of dates, not the word "previous" — so last week's series is
+ * fetched once whether it is the subject or the baseline.
+ */
+export function usePreviousDaily(range: StatsRange) {
+  return useDailyWindow(rangeDays(range, STATS_RANGE_DAYS[range]));
+}
+
+function useDailyWindow({ from, to }: { from: string; to: string }) {
   return useQuery<DailyPoint[]>({
     queryKey: [...statsKey, 'daily', from, to],
     queryFn: () => fetchDaily(from, to),
@@ -30,19 +45,22 @@ export function useByProject(range: StatsRange) {
 }
 
 /**
- * The window as calendar days, ending today.
+ * The window as calendar days, ending today — or `offsetDays` before today,
+ * which is how the preceding window is asked for.
  *
  * Built from the device's local date rather than an ISO instant: the server is
  * told the time zone separately, and sending `2026-09-04T03:00:00Z` for what the
  * reader calls the 4th would shift the whole chart by a day.
  */
-function rangeDays(range: StatsRange): { from: string; to: string } {
+function rangeDays(range: StatsRange, offsetDays = 0): { from: string; to: string } {
   const days = STATS_RANGE_DAYS[range];
-  const today = new Date();
-  const start = new Date(today);
+  const end = new Date();
+  end.setDate(end.getDate() - offsetDays);
+
+  const start = new Date(end);
   start.setDate(start.getDate() - (days - 1));
 
-  return { from: isoDate(start), to: isoDate(today) };
+  return { from: isoDate(start), to: isoDate(end) };
 }
 
 function isoDate(date: Date): string {
