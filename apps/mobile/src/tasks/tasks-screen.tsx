@@ -1,31 +1,22 @@
 import { useMemo, useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
-import {
-  Button,
-  Checkbox,
-  Chip,
-  Dialog,
-  Divider,
-  IconButton,
-  List,
-  Menu,
-  Portal,
-  Snackbar,
-  Text,
-  TextInput,
-  useTheme,
-} from 'react-native-paper';
+import { FlatList, StyleSheet, TextInput, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Dialog, Menu, Portal, Snackbar } from 'react-native-paper';
 
 import { useProjects } from '../projects/use-projects';
-import { Screen } from '../ui/screen';
+import { color, font, radius, size } from '../theme/tokens';
+import { Button, RoundButton } from '../ui/button';
+import { Chip, ChipRow } from '../ui/chip';
+import { HeaderAction, HeaderBar, Screen } from '../ui/screen';
 import { EmptyState, ErrorState, LoadingState } from '../ui/states';
+import { Text } from '../ui/text';
+import { TaskRow } from './task-row';
 import { TASK_STATUSES, TASK_STATUS_LABELS } from './task-types';
 import type { Task, TaskStatus } from './task-types';
 import { useTaskMutations, useTasks } from './use-tasks';
 
 export function TasksScreen() {
-  const theme = useTheme();
+  const router = useRouter();
 
   // Arriving from a project row pre-filters the list; the filter stays editable
   // from here, so the screen is one list rather than two.
@@ -34,7 +25,7 @@ export function TasksScreen() {
   const [projectId, setProjectId] = useState<string | undefined>(params.projectId);
   const [status, setStatus] = useState<TaskStatus | undefined>(undefined);
   const [title, setTitle] = useState('');
-  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [acting, setActing] = useState<Task | null>(null);
   const [projectMenu, setProjectMenu] = useState(false);
   const [deleting, setDeleting] = useState<Task | null>(null);
 
@@ -64,7 +55,7 @@ export function TasksScreen() {
   };
 
   const setStatusOf = async (task: Task, next: TaskStatus) => {
-    setMenuFor(null);
+    setActing(null);
 
     try {
       await mutations.update({ id: task.id, status: next });
@@ -86,49 +77,23 @@ export function TasksScreen() {
     }
   };
 
-  if (tasks.isPending) return <LoadingState title="Loading your tasks…" />;
-
-  if (tasks.isError) {
-    return (
-      <Screen ignoreTopInset>
-        <ErrorState
-          title="Could not load your tasks"
-          description={tasks.error.message}
-          onRetry={() => void tasks.refetch()}
-          retrying={tasks.isFetching}
-        />
-      </Screen>
-    );
-  }
-
-  const projectFilterLabel = projectId
-    ? (projectsById.get(projectId)?.name ?? 'Project')
-    : 'All projects';
-
-  return (
-    <Screen ignoreTopInset>
-      <TextInput
-        mode="outlined"
-        label="Add a task"
-        // Paper does not derive one from the label.
-        accessibilityLabel="Add a task"
-        value={title}
-        onChangeText={setTitle}
-        onSubmitEditing={() => void add()}
-        returnKeyType="done"
-        right={
-          <TextInput.Icon icon="plus" accessibilityLabel="Add task" onPress={() => void add()} />
-        }
-      />
-
-      <View style={styles.filters}>
+  // The project a list is scoped to is named in the title, so the control that
+  // changes it belongs beside the title — and the menu hangs off that control
+  // rather than off a chip that would repeat what the title already says.
+  const header = (
+    <HeaderBar
+      title={projectId ? (projectsById.get(projectId)?.name ?? 'Tasks') : 'Tasks'}
+      onBack={() => router.back()}
+      action={
         <Menu
           visible={projectMenu}
           onDismiss={() => setProjectMenu(false)}
           anchor={
-            <Chip icon="folder-outline" onPress={() => setProjectMenu(true)}>
-              {projectFilterLabel}
-            </Chip>
+            <HeaderAction
+              icon="filter"
+              label="Filter by project"
+              onPress={() => setProjectMenu(true)}
+            />
           }
         >
           <Menu.Item
@@ -149,24 +114,69 @@ export function TasksScreen() {
             />
           ))}
         </Menu>
+      }
+    />
+  );
 
+  if (tasks.isPending) return <LoadingState title="Loading your tasks…" />;
+
+  if (tasks.isError) {
+    return (
+      <Screen header={header}>
+        <ErrorState
+          title="Could not load your tasks"
+          description={tasks.error.message}
+          onRetry={() => void tasks.refetch()}
+          retrying={tasks.isFetching}
+        />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen header={header} contentStyle={styles.content}>
+      <ChipRow>
+        <Chip label="All" selected={status === undefined} onPress={() => setStatus(undefined)} />
         {TASK_STATUSES.map((value) => (
           <Chip
             key={value}
+            label={TASK_STATUS_LABELS[value]}
             selected={status === value}
-            showSelectedCheck={false}
-            onPress={() => setStatus(status === value ? undefined : value)}
-          >
-            {TASK_STATUS_LABELS[value]}
-          </Chip>
+            onPress={() => setStatus(value)}
+          />
         ))}
+      </ChipRow>
+
+      <View style={styles.composer}>
+        <TextInput
+          style={styles.composerInput}
+          accessibilityLabel="Add a task"
+          placeholder="Add a task…"
+          placeholderTextColor={color.inkSecondary}
+          value={title}
+          onChangeText={setTitle}
+          onSubmitEditing={() => void add()}
+          returnKeyType="done"
+          selectionColor={color.accent}
+        />
+        <RoundButton
+          icon="plus"
+          iconSize={20}
+          strokeWidth={2.4}
+          background={color.accent}
+          tint={color.onAccent}
+          disabled={title.trim().length === 0 || mutations.pending}
+          accessibilityLabel="Add task"
+          onPress={() => void add()}
+        />
       </View>
 
       <FlatList
+        style={styles.flex}
         data={tasks.data}
         keyExtractor={(task) => task.id}
-        ItemSeparatorComponent={Divider}
         contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
         refreshing={tasks.isFetching}
         onRefresh={() => void tasks.refetch()}
         ListEmptyComponent={
@@ -179,70 +189,84 @@ export function TasksScreen() {
             }
           />
         }
-        renderItem={({ item }) => {
-          const done = item.status === 'DONE';
+        renderItem={({ item, index }) => {
           const project = item.projectId ? projectsById.get(item.projectId) : undefined;
 
           return (
-            <List.Item
-              title={item.title}
-              titleStyle={done ? styles.done : undefined}
-              description={describeTask(item, project?.name)}
-              left={() => (
-                <Checkbox.Android
-                  status={done ? 'checked' : 'unchecked'}
-                  accessibilityLabel={`Mark ${item.title} as ${done ? 'to do' : 'done'}`}
-                  onPress={() => void setStatusOf(item, done ? 'TODO' : 'DONE')}
-                />
-              )}
-              right={() => (
-                <Menu
-                  visible={menuFor === item.id}
-                  onDismiss={() => setMenuFor(null)}
-                  anchor={
-                    <IconButton
-                      icon="dots-vertical"
-                      accessibilityLabel={`Actions for ${item.title}`}
-                      onPress={() => setMenuFor(item.id)}
-                    />
-                  }
-                >
-                  {item.status !== 'IN_PROGRESS' ? (
-                    <Menu.Item
-                      leadingIcon="progress-clock"
-                      title="Mark in progress"
-                      onPress={() => void setStatusOf(item, 'IN_PROGRESS')}
-                    />
-                  ) : null}
-                  <Menu.Item
-                    leadingIcon="delete-outline"
-                    title="Delete"
-                    onPress={() => {
-                      setMenuFor(null);
-                      setDeleting(item);
-                    }}
-                  />
-                </Menu>
-              )}
+            <TaskRow
+              task={item}
+              projectName={project?.name}
+              projectColor={project?.color}
+              last={index === (tasks.data?.length ?? 0) - 1}
+              onToggleDone={() => void setStatusOf(item, item.status === 'DONE' ? 'TODO' : 'DONE')}
+              onFocus={() => router.push({ pathname: '/focus', params: { taskId: item.id } })}
+              running={item.status === 'IN_PROGRESS'}
+              onLongPress={() => setActing(item)}
             />
           );
         }}
       />
 
       <Portal>
-        <Dialog visible={deleting !== null} onDismiss={() => setDeleting(null)}>
-          <Dialog.Title>Delete this task?</Dialog.Title>
-          <Dialog.Content>
-            <Text variant="bodyMedium">
+        {/* Long-press opens the actions a row has no room to show. A sheet of
+            buttons rather than a popup menu: the row it belongs to can be
+            anywhere on screen, and a menu pinned to it would open off the edge
+            as often as not. */}
+        <Dialog visible={acting !== null} onDismiss={() => setActing(null)} style={styles.dialog}>
+          <View style={styles.dialogBody}>
+            <Text variant="personName" numberOfLines={2}>
+              {acting?.title}
+            </Text>
+            {acting && acting.status !== 'IN_PROGRESS' ? (
+              <Button
+                label="Mark in progress"
+                variant="tonal"
+                onPress={() => void setStatusOf(acting, 'IN_PROGRESS')}
+              />
+            ) : null}
+            {acting?.status === 'IN_PROGRESS' ? (
+              <Button
+                label="Move back to to-do"
+                variant="tonal"
+                onPress={() => void setStatusOf(acting, 'TODO')}
+              />
+            ) : null}
+            <Button
+              label="Delete task"
+              variant="ghost"
+              onPress={() => {
+                const task = acting;
+                setActing(null);
+                setDeleting(task);
+              }}
+            />
+          </View>
+        </Dialog>
+
+        <Dialog
+          visible={deleting !== null}
+          onDismiss={() => setDeleting(null)}
+          style={styles.dialog}
+        >
+          <View style={styles.dialogBody}>
+            <Text variant="personName">Delete this task?</Text>
+            <Text variant="body" tone="secondary">
               Focus sessions already recorded against it are kept — they are detached, not deleted.
             </Text>
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setDeleting(null)}>Cancel</Button>
-            <Button textColor={theme.colors.error} onPress={() => void confirmDelete()}>
-              Delete task
-            </Button>
-          </Dialog.Actions>
+            <View style={styles.dialogActions}>
+              <Button
+                label="Cancel"
+                variant="ghost"
+                onPress={() => setDeleting(null)}
+                style={styles.dialogAction}
+              />
+              <Button
+                label="Delete task"
+                onPress={() => void confirmDelete()}
+                style={styles.dialogAction}
+              />
+            </View>
+          </View>
         </Dialog>
       </Portal>
 
@@ -257,12 +281,6 @@ export function TasksScreen() {
   );
 }
 
-function describeTask(task: Task, projectName?: string): string {
-  const pomodoros = `${task.completedPomodoros}/${task.estimatedPomodoros} pomodoros`;
-
-  return projectName ? `${projectName} · ${pomodoros}` : pomodoros;
-}
-
 function describe(code: string, message: string): string {
   return code === 'TASK_HAS_ACTIVE_SESSION'
     ? 'A session is running on this task. Finish or cancel it first.'
@@ -270,7 +288,31 @@ function describe(code: string, message: string): string {
 }
 
 const styles = StyleSheet.create({
-  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  list: { flexGrow: 1 },
-  done: { textDecorationLine: 'line-through' },
+  content: { paddingTop: 8 },
+  composer: {
+    marginTop: 16,
+    height: size.control,
+    borderWidth: 1,
+    borderColor: color.cardBorder,
+    borderRadius: radius.control,
+    backgroundColor: color.surface,
+    paddingLeft: 16,
+    paddingRight: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  composerInput: {
+    flex: 1,
+    fontFamily: font.regular,
+    fontSize: 15,
+    lineHeight: 20,
+    color: color.ink,
+  },
+  flex: { flex: 1 },
+  list: { flexGrow: 1, paddingTop: 20 },
+  dialog: { backgroundColor: color.surface, borderRadius: radius.card },
+  dialogBody: { padding: 20, gap: 12 },
+  dialogActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  dialogAction: { flex: 1 },
 });
