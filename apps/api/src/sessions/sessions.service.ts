@@ -3,6 +3,7 @@ import { SessionKind, SessionStatus } from '@prisma/client';
 import type { PomodoroSession, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import type { CycleDto } from './dto/cycle.dto';
 import type { SessionDto } from './dto/session.dto';
 import type { SessionPageDto } from './dto/session-page.dto';
 import type { StartSessionDto } from './dto/start-session.dto';
@@ -10,6 +11,11 @@ import { toSessionDto } from './session.mapper';
 import { hasExpired, pauseAccumulationOnResume } from './session-timing';
 
 const ACTIVE_STATUSES = [SessionStatus.RUNNING, SessionStatus.PAUSED];
+
+interface CycleRow {
+  cycles_until_long_break: number;
+  completed_in_cycle: bigint;
+}
 
 export interface HistoryQuery {
   from?: Date;
@@ -101,6 +107,68 @@ export class SessionsService {
     });
 
     return active ? toSessionDto(active, now) : null;
+  }
+
+  /**
+   * Where the user stands in the run of focus sessions that ends in a long break.
+   *
+   * Counted in SQL from what is recorded rather than tracked on a device: the
+   * position has to survive the app being closed mid-cycle, and two devices must
+   * not be able to disagree about which Pomodoro this is.
+   *
+   * The run restarts at the last completed long break — which is what a long
+   * break is — and again at local midnight, so a cycle abandoned yesterday does
+   * not leave today starting at three.
+   *
+   * A cancelled session is not a boundary. The Pomodoro it interrupted is void
+   * — it earns no place in the run, exactly as it earns no time in the
+   * statistics — but the ones already banked are not taken away with it: the
+   * run measures accumulated fatigue, and an interruption does not undo the two
+   * hours of work that came before it. Punishing the honest signal would only
+   * teach the user to let the timer run out in a pocket instead.
+   *
+   * A session belongs to the run it *ended* in, not the one it started in. The
+   * daily chart buckets by `started_at`, because a day is described by when its
+   * work began; the run cannot, because a Pomodoro that began at 23:48 and
+   * finished at 00:13 has to move the row the moment it lands. Bucketing it by
+   * its start would drop the session the user just watched complete.
+   */
+  async cycle(userId: string, timeZone: string): Promise<CycleDto> {
+    const [row] = await this.prisma.$queryRaw<CycleRow[]>`
+      SELECT
+        u.cycles_until_long_break AS cycles_until_long_break,
+        (
+          SELECT COUNT(*)
+          FROM pomodoro_sessions s
+          WHERE s.user_id = u.id
+            AND s.status = 'COMPLETED'
+            AND s.kind = 'FOCUS'
+            AND s.ended_at >= GREATEST(
+              date_trunc('day', now() AT TIME ZONE ${timeZone}) AT TIME ZONE ${timeZone},
+              COALESCE(
+                (
+                  SELECT MAX(l.ended_at)
+                  FROM pomodoro_sessions l
+                  WHERE l.user_id = u.id
+                    AND l.status = 'COMPLETED'
+                    AND l.kind = 'LONG_BREAK'
+                ),
+                '-infinity'::timestamptz
+              )
+            )
+        ) AS completed_in_cycle
+      FROM users u
+      WHERE u.id = ${userId}::uuid
+    `;
+
+    if (!row) {
+      throw new NotFoundException({ code: 'USER_NOT_FOUND', message: 'User not found.' });
+    }
+
+    return {
+      completedInCycle: Number(row.completed_in_cycle),
+      cyclesUntilLongBreak: row.cycles_until_long_break,
+    };
   }
 
   async pause(userId: string, id: string): Promise<SessionDto> {
