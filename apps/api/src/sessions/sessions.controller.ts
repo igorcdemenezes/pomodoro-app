@@ -29,6 +29,8 @@ import type { Response } from 'express';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { CycleDto } from './dto/cycle.dto';
+import { CycleQueryDto } from './dto/cycle-query.dto';
 import { SessionDto } from './dto/session.dto';
 import { SessionPageDto } from './dto/session-page.dto';
 import { StartSessionDto } from './dto/start-session.dto';
@@ -77,6 +79,18 @@ export class SessionsController {
     }
 
     return active;
+  }
+
+  @Get('cycle')
+  @ApiOperation({
+    summary: 'Where the user stands in the run of focus sessions before a long break',
+    description:
+      'Counted from completed sessions, so the position survives the app being closed and two ' +
+      'devices agree. The run restarts at the last completed long break, and at local midnight.',
+  })
+  @ApiOkResponse({ type: CycleDto })
+  cycle(@CurrentUser() user: AuthenticatedUser, @Query() query: CycleQueryDto): Promise<CycleDto> {
+    return this.sessions.cycle(user.id, query.timeZone);
   }
 
   @Get()

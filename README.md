@@ -155,6 +155,7 @@ npm run api start:dev      # watch mode on http://localhost:3000/api/v1
 | `GET /api/v1/sessions/active`                                   | The session to render; 204 when there is none         |
 | `PATCH /api/v1/sessions/:id/pause` `resume` `complete` `cancel` | State transitions                                     |
 | `GET /api/v1/sessions`                                          | Finished sessions, cursor-paginated                   |
+| `GET /api/v1/sessions/cycle`                                    | Focus sessions done in the run before a long break    |
 | `GET /api/v1/stats/summary` `daily` `by-project`                | Productivity metrics, aggregated in SQL               |
 | `GET /api/v1/health`                                            | Readiness probe, 503 when the database is unreachable |
 | `GET /api/docs` `docs-json`                                     | Swagger UI and the OpenAPI document                   |

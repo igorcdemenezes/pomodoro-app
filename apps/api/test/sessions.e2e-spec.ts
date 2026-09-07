@@ -295,6 +295,168 @@ describe('Pomodoro sessions (e2e)', () => {
     });
   });
 
+  describe('the run up to a long break', () => {
+    /**
+     * A fixed-offset zone in which it is currently the middle of the afternoon,
+     * and the instant its last midnight fell on.
+     *
+     * The run restarts at the reader's midnight, so a suite that happened to run
+     * either side of it would seed sessions into yesterday and count nothing.
+     * Choosing the zone from the current instant keeps that boundary hours away
+     * whenever the suite is run — and hands back the boundary itself, so the
+     * one test that has to straddle it can place a session precisely.
+     */
+    const midday = () => {
+      const offset = 14 - new Date().getUTCHours();
+      const zone = offset >= 0 ? `Etc/GMT-${offset}` : `Etc/GMT+${-offset}`;
+
+      const midnight = new Date(Date.now() + offset * 60 * MINUTE);
+      midnight.setUTCHours(0, 0, 0, 0);
+
+      return { zone, midnight: new Date(midnight.getTime() - offset * 60 * MINUTE) };
+    };
+
+    const cycleOf = (zone: string, user = alice) =>
+      asUser(app, user).get(`/api/v1/sessions/cycle?timeZone=${encodeURIComponent(zone)}`);
+
+    const seedFinished = (
+      kind: 'FOCUS' | 'SHORT_BREAK' | 'LONG_BREAK',
+      minutesAgo: number,
+      status: 'COMPLETED' | 'CANCELLED' = 'COMPLETED',
+      user = alice,
+    ) =>
+      prisma.pomodoroSession.create({
+        data: {
+          userId: user.id,
+          kind,
+          status,
+          startedAt: new Date(Date.now() - minutesAgo * MINUTE),
+          durationSec: 1500,
+          endedAt: new Date(Date.now() - (minutesAgo - 25) * MINUTE),
+        },
+      });
+
+    it('starts a new account at the beginning of the run', async () => {
+      const response = await cycleOf(midday().zone).expect(200);
+
+      expect(response.body).toEqual({ completedInCycle: 0, cyclesUntilLongBreak: 4 });
+    });
+
+    it('counts a focus session as soon as it is completed', async () => {
+      const { body: started } = await startFocus().expect(201);
+      await a().patch(`/api/v1/sessions/${started.id}/complete`).expect(200);
+
+      const response = await cycleOf(midday().zone).expect(200);
+
+      expect(response.body.completedInCycle).toBe(1);
+    });
+
+    it('does not count a session that is still running', async () => {
+      await startFocus().expect(201);
+
+      const response = await cycleOf(midday().zone).expect(200);
+
+      expect(response.body.completedInCycle).toBe(0);
+    });
+
+    // A cancelled Pomodoro earns no place in the run, exactly as it earns no
+    // time in the statistics.
+    it('does not count a cancelled focus session', async () => {
+      await seedFinished('FOCUS', 30, 'CANCELLED');
+
+      const response = await cycleOf(midday().zone).expect(200);
+
+      expect(response.body.completedInCycle).toBe(0);
+    });
+
+    // The interrupted Pomodoro is void; the ones already banked are not voided
+    // with it. The run measures accumulated fatigue, and an interruption does
+    // not undo the work that came before it.
+    it('keeps the Pomodoros already banked when one is cancelled', async () => {
+      await seedFinished('FOCUS', 240);
+      await seedFinished('FOCUS', 200);
+      await seedFinished('FOCUS', 160, 'CANCELLED');
+
+      const response = await cycleOf(midday().zone).expect(200);
+
+      expect(response.body.completedInCycle).toBe(2);
+    });
+
+    it('does not count breaks, which are what the run pays for', async () => {
+      await seedFinished('SHORT_BREAK', 30);
+
+      const response = await cycleOf(midday().zone).expect(200);
+
+      expect(response.body.completedInCycle).toBe(0);
+    });
+
+    it('restarts the run at the last completed long break', async () => {
+      await seedFinished('FOCUS', 240);
+      await seedFinished('FOCUS', 200);
+      await seedFinished('LONG_BREAK', 180);
+      await seedFinished('FOCUS', 120);
+
+      const response = await cycleOf(midday().zone).expect(200);
+
+      expect(response.body.completedInCycle).toBe(1);
+    });
+
+    // Yesterday's unfinished run is not today's: a user who stopped at three
+    // and slept starts the morning at nothing, not one short of a long break.
+    it('restarts the run at local midnight', async () => {
+      await seedFinished('FOCUS', 20 * 60);
+      await seedFinished('FOCUS', 19 * 60);
+
+      const response = await cycleOf(midday().zone).expect(200);
+
+      expect(response.body.completedInCycle).toBe(0);
+    });
+
+    it('reports the length the user configured', async () => {
+      await a().patch('/api/v1/me').send({ cyclesUntilLongBreak: 6 }).expect(200);
+
+      const response = await cycleOf(midday().zone).expect(200);
+
+      expect(response.body.cyclesUntilLongBreak).toBe(6);
+    });
+
+    it('counts only the caller own sessions', async () => {
+      await seedFinished('FOCUS', 30, 'COMPLETED', bob);
+
+      const mine = await cycleOf(midday().zone).expect(200);
+      const theirs = await cycleOf(midday().zone, bob).expect(200);
+
+      expect(mine.body.completedInCycle).toBe(0);
+      expect(theirs.body.completedInCycle).toBe(1);
+    });
+
+    // A Pomodoro that began at 23:48 and ended at 00:13 is the first of the new
+    // day, not a session lost to the boundary it crossed: the row has to move
+    // the moment the user watches the timer land.
+    it('counts a session that started before midnight and ended after it', async () => {
+      const { zone, midnight } = midday();
+
+      await prisma.pomodoroSession.create({
+        data: {
+          userId: alice.id,
+          kind: 'FOCUS',
+          status: 'COMPLETED',
+          startedAt: new Date(midnight.getTime() - 12 * MINUTE),
+          durationSec: 1500,
+          endedAt: new Date(midnight.getTime() + 13 * MINUTE),
+        },
+      });
+
+      const response = await cycleOf(zone).expect(200);
+
+      expect(response.body.completedInCycle).toBe(1);
+    });
+
+    it('rejects a time zone that is not one', async () => {
+      await a().get('/api/v1/sessions/cycle?timeZone=Mars/Olympus').expect(400);
+    });
+  });
+
   describe('history', () => {
     const seedFinished = async (count: number) => {
       await prisma.pomodoroSession.createMany({
