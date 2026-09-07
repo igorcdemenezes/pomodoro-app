@@ -93,6 +93,23 @@ export class SessionsController {
     return this.sessions.cycle(user.id, query.timeZone);
   }
 
+  @Post('cycle/reset')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Start the run over',
+    description:
+      'Marks now as the beginning of the run, so the focus sessions completed before it stop ' +
+      'counting toward the long break. They keep their place in the history and the metrics. ' +
+      'Answers with the run as it stands afterwards.',
+  })
+  @ApiOkResponse({ type: CycleDto })
+  resetCycle(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: CycleQueryDto,
+  ): Promise<CycleDto> {
+    return this.sessions.resetCycle(user.id, query.timeZone);
+  }
+
   @Get()
   @ApiOperation({ summary: 'Finished sessions, most recent first' })
   @ApiQuery({ name: 'from', required: false, type: String, description: 'ISO 8601 instant' })

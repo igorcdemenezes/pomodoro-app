@@ -455,6 +455,60 @@ describe('Pomodoro sessions (e2e)', () => {
     it('rejects a time zone that is not one', async () => {
       await a().get('/api/v1/sessions/cycle?timeZone=Mars/Olympus').expect(400);
     });
+
+    // A run the user lost track of is theirs to start over. The reset is a
+    // boundary for the count, never an erasure: nothing recorded is touched.
+    describe('starting the run over', () => {
+      const reset = (zone: string, user = alice) =>
+        asUser(app, user).post(`/api/v1/sessions/cycle/reset?timeZone=${encodeURIComponent(zone)}`);
+
+      it('puts the run back at the beginning and answers with it', async () => {
+        await seedFinished('FOCUS', 120);
+        await seedFinished('FOCUS', 60);
+
+        const response = await reset(midday().zone).expect(200);
+
+        expect(response.body).toEqual({ completedInCycle: 0, cyclesUntilLongBreak: 4 });
+        expect((await cycleOf(midday().zone).expect(200)).body.completedInCycle).toBe(0);
+      });
+
+      it('counts the Pomodoros finished after it as the new run', async () => {
+        await seedFinished('FOCUS', 120);
+        await reset(midday().zone).expect(200);
+
+        const { body: session } = await startFocus().expect(201);
+        await a().patch(`/api/v1/sessions/${session.id}/complete`).expect(200);
+
+        const response = await cycleOf(midday().zone).expect(200);
+
+        expect(response.body.completedInCycle).toBe(1);
+      });
+
+      it('leaves the sessions before it in the history', async () => {
+        await seedFinished('FOCUS', 120);
+        await seedFinished('FOCUS', 60);
+
+        await reset(midday().zone).expect(200);
+
+        const response = await a().get('/api/v1/sessions').expect(200);
+
+        expect(response.body.items).toHaveLength(2);
+      });
+
+      it('starts over only the caller own run', async () => {
+        await seedFinished('FOCUS', 120, 'COMPLETED', bob);
+
+        await reset(midday().zone).expect(200);
+
+        const theirs = await cycleOf(midday().zone, bob).expect(200);
+
+        expect(theirs.body.completedInCycle).toBe(1);
+      });
+
+      it('rejects a time zone that is not one', async () => {
+        await a().post('/api/v1/sessions/cycle/reset?timeZone=Mars/Olympus').expect(400);
+      });
+    });
   });
 
   describe('history', () => {

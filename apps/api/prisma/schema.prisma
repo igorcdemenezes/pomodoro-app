@@ -66,6 +66,11 @@ model User {
   longBreakSec         Int @default(900) @map("long_break_sec")
   cyclesUntilLongBreak Int @default(4) @map("cycles_until_long_break")
 
+  /// When the user last started the run over by hand. A boundary for the run
+  /// count alongside the last long break and local midnight; the sessions
+  /// before it keep their place in the statistics.
+  cycleResetAt DateTime? @map("cycle_reset_at") @db.Timestamptz(3)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
