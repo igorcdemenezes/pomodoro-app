@@ -17,7 +17,9 @@ jest.mock('./session-notification');
 jest.mock('../tasks/tasks-api');
 jest.mock('../projects/projects-api');
 jest.mock('../stats/stats-api');
-jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({}) }));
+// The task a session is for arrives in the route, from a task's play button.
+const mockRoute: { params: { taskId?: string } } = { params: {} };
+jest.mock('expo-router', () => ({ useLocalSearchParams: () => mockRoute.params }));
 jest.mock('expo-keep-awake', () => ({
   activateKeepAwakeAsync: jest.fn(() => Promise.resolve()),
   deactivateKeepAwake: jest.fn(() => Promise.resolve()),
@@ -84,6 +86,7 @@ function renderScreen() {
 describe('focus screen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRoute.params = {};
     resetServerClock();
     jest.useFakeTimers().setSystemTime(new Date(NOW));
     notifier.scheduleSessionEnd.mockResolvedValue('notification-1');
@@ -216,20 +219,56 @@ describe('focus screen', () => {
     expect(notifier.scheduleSessionEnd).toHaveBeenCalledTimes(1);
     expect(notifier.cancelSessionEnd).not.toHaveBeenCalled();
   });
-  it('records the session against the task the user picked', async () => {
+  it('records the session against the task it was opened for', async () => {
+    mockRoute.params = { taskId: TASK_ID };
     api.fetchActiveSession.mockResolvedValue(null);
     api.startSession.mockResolvedValue(running({ taskId: TASK_ID }));
 
     await renderScreen();
 
-    await fireEvent.press(await screen.findByLabelText('Task: none'));
-    await fireEvent.press(await screen.findByText('Write the ADR'));
+    expect(await screen.findByText('Write the ADR')).toBeOnTheScreen();
+
     await fireEvent.press(screen.getByText('START'));
 
     await waitFor(() => expect(api.startSession).toHaveBeenCalled());
     expect(api.startSession.mock.calls[0][0]).toEqual({
       kind: 'FOCUS',
       taskId: TASK_ID,
+      clientMutationId: 'ffffffff-0000-4000-8000-00000000000f',
+    });
+  });
+
+  it('starts on nothing in particular when the tab is opened on its own', async () => {
+    api.fetchActiveSession.mockResolvedValue(null);
+    api.startSession.mockResolvedValue(running());
+
+    await renderScreen();
+
+    await fireEvent.press(await screen.findByText('START'));
+
+    await waitFor(() => expect(api.startSession).toHaveBeenCalled());
+    expect(api.startSession.mock.calls[0][0]).toEqual({
+      kind: 'FOCUS',
+      clientMutationId: 'ffffffff-0000-4000-8000-00000000000f',
+    });
+  });
+
+  it('lets the task it was opened for be dropped before starting', async () => {
+    mockRoute.params = { taskId: TASK_ID };
+    api.fetchActiveSession.mockResolvedValue(null);
+    api.startSession.mockResolvedValue(running());
+
+    await renderScreen();
+
+    await fireEvent.press(await screen.findByLabelText('Focus without this task'));
+
+    expect(screen.queryByText('Write the ADR')).not.toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByText('START'));
+
+    await waitFor(() => expect(api.startSession).toHaveBeenCalled());
+    expect(api.startSession.mock.calls[0][0]).toEqual({
+      kind: 'FOCUS',
       clientMutationId: 'ffffffff-0000-4000-8000-00000000000f',
     });
   });
@@ -242,13 +281,14 @@ describe('focus screen', () => {
     expect(await screen.findByText('Write the ADR')).toBeOnTheScreen();
   });
 
-  it('offers no task on a break, which is not work on anything', async () => {
+  it('names no task on a break, which is not work on anything', async () => {
+    mockRoute.params = { taskId: TASK_ID };
     api.fetchActiveSession.mockResolvedValue(null);
 
     await renderScreen();
 
     await fireEvent.press(await screen.findByText('Short break'));
 
-    expect(screen.queryByLabelText('Task: none')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Write the ADR')).not.toBeOnTheScreen();
   });
 });

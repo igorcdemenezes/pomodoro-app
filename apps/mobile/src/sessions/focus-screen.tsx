@@ -19,7 +19,6 @@ import { TimerRing } from '../ui/timer-ring';
 import { formatCountdown, hasExpired, progress } from './session-timing';
 import { SESSION_KIND_LABELS, SESSION_KINDS } from './session-types';
 import type { SessionKind } from './session-types';
-import { TaskPicker } from './task-picker';
 import { useActiveSession } from './use-active-session';
 import { useCountdown } from './use-countdown';
 import { useSessionControls } from './use-session-controls';
@@ -56,15 +55,17 @@ export function FocusScreen() {
   const [taskId, setTaskId] = useState<string | undefined>(params.taskId);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Arriving from a task's play button has to land on *that* task even when
-  // this tab is already mounted — which, being a tab, it usually is. Adjusting
-  // during render rather than in an effect: an effect would paint the previous
-  // task for a frame before correcting itself.
+  // A task is chosen on the tasks screen, by its play button, never here: this
+  // tab opened on its own is a plain focus session on nothing in particular.
+  // The route is what says which task, so the screen follows it — including
+  // back to none when the tab is entered from the tab bar. Adjusted during
+  // render rather than in an effect: an effect would paint the previous task
+  // for a frame before correcting itself.
   const [arrivedWith, setArrivedWith] = useState(params.taskId);
 
   if (params.taskId !== arrivedWith) {
     setArrivedWith(params.taskId);
-    if (params.taskId) setTaskId(params.taskId);
+    setTaskId(params.taskId);
   }
 
   // Shares its cache entry with the tasks screen, so opening the timer after
@@ -73,7 +74,6 @@ export function FocusScreen() {
   const projects = useProjects(true);
   const daily = useDaily('week');
 
-  const openTasks = (tasks.data ?? []).filter((task) => task.status !== 'DONE');
   const chosenId = session?.taskId ?? taskId;
   const chosen = chosenId ? tasks.data?.find((task) => task.id === chosenId) : undefined;
   const chosenProject = chosen?.projectId
@@ -199,43 +199,46 @@ export function FocusScreen() {
           </Text>
         </View>
 
-        {session ? (
-          chosen ? (
-            <Card style={styles.taskCard}>
-              <Dot color={chosenProject?.color} />
-              <View style={styles.taskBody}>
-                <Text variant="rowTitle" numberOfLines={2}>
-                  {chosen.title}
-                </Text>
-                <Text variant="label" tone="secondary">
-                  {chosenProject?.name ?? 'No project'} · {chosen.completedPomodoros} of{' '}
-                  {chosen.estimatedPomodoros}
-                </Text>
-              </View>
-            </Card>
-          ) : null
-        ) : (
-          <View style={styles.setup}>
-            <View style={styles.kinds}>
-              {SESSION_KINDS.map((value) => (
-                <KindOption
-                  key={value}
-                  kind={value}
-                  selected={value === kind}
-                  disabled={controls.pending}
-                  onPress={() => setKind(value)}
-                />
-              ))}
+        {chosen && shownKind === 'FOCUS' ? (
+          <Card style={styles.taskCard}>
+            <Dot color={chosenProject?.color} />
+            <View style={styles.taskBody}>
+              <Text variant="rowTitle" numberOfLines={2}>
+                {chosen.title}
+              </Text>
+              <Text variant="label" tone="secondary">
+                {chosenProject?.name ?? 'No project'} · {chosen.completedPomodoros} of{' '}
+                {chosen.estimatedPomodoros}
+              </Text>
             </View>
-
-            {kind === 'FOCUS' ? (
-              <TaskPicker
-                tasks={openTasks}
-                value={taskId}
+            {/* Once a session is running the task is part of what the server
+                recorded, so it can only be let go before the timer starts. */}
+            {session ? null : (
+              <Pressable
+                onPress={() => setTaskId(undefined)}
                 disabled={controls.pending}
-                onChange={setTaskId}
+                accessibilityRole="button"
+                accessibilityLabel="Focus without this task"
+                hitSlop={10}
+                style={({ pressed }) => pressed && styles.faded}
+              >
+                <Icon name="close" size={18} color={color.inkIcon} strokeWidth={2} />
+              </Pressable>
+            )}
+          </Card>
+        ) : null}
+
+        {session ? null : (
+          <View style={styles.kinds}>
+            {SESSION_KINDS.map((value) => (
+              <KindOption
+                key={value}
+                kind={value}
+                selected={value === kind}
+                disabled={controls.pending}
+                onPress={() => setKind(value)}
               />
-            ) : null}
+            ))}
           </View>
         )}
 
@@ -451,8 +454,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   taskBody: { flex: 1, gap: 2 },
-  setup: { marginTop: 28, alignSelf: 'stretch', gap: 16, alignItems: 'center' },
-  kinds: { flexDirection: 'row', gap: 8 },
+  kinds: { marginTop: 28, flexDirection: 'row', gap: 8 },
   kindOption: {
     height: size.chip,
     borderRadius: radius.pill,
