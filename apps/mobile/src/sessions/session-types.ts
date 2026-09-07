@@ -29,6 +29,13 @@ export interface Session {
   serverTime: string;
 }
 
+/** Where the user stands in the run of focus sessions that ends in a long break. */
+export interface Cycle {
+  /** Focus sessions completed since the run began. Never a client's own tally. */
+  completedInCycle: number;
+  cyclesUntilLongBreak: number;
+}
+
 export interface SessionPage {
   items: Session[];
   nextCursor: string | null;

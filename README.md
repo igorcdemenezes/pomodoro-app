@@ -244,6 +244,44 @@ Three independent mechanisms keep "one session at a time" true:
 3. The **partial unique index** refuses it again at the database — which is what
    holds when two devices race and both pass step 2.
 
+### The cycle
+
+Four Pomodoros earn a long break, and the app has to know which of the four you
+are on. That position is counted by the server, not tracked on a device
+(`GET /sessions/cycle`): it has to survive the app being closed mid-cycle, and
+two devices must not be able to disagree about which Pomodoro this is.
+
+| Event                   | Effect on the run                                |
+| ----------------------- | ------------------------------------------------ |
+| Focus session completed | One more Pomodoro in the run                     |
+| Focus session cancelled | Nothing — it earns no place, as it earns no time |
+| Short break             | Neutral: it neither counts nor clears            |
+| Long break completed    | The run restarts — that is what a long break is  |
+| Local midnight          | The run restarts                                 |
+
+Midnight is a boundary because yesterday's abandoned run is not today's: someone
+who stopped at three and slept starts the morning at nothing, not one short of a
+long break. It is the same time zone the metrics use.
+
+The timer draws one mark per Pomodoro and fills the one being earned as the ring
+fills. The row is scaled to the phase on screen: four marks while the run is
+being earned, and a **single** mark once the long break is what the screen is
+about — that break happens once per run, so counting it in quarters would be
+counting in the wrong unit. Leave the long break in the picker and the run comes
+back, along with **Long break next**.
+
+The row is not drawn at all until the count is known. An empty row would read as
+a cycle at zero, which is a claim about the user's day rather than an admission
+that nothing has been fetched.
+
+When a session ends, the picker offers what the method says comes next. A block
+is a Pomodoro and the short break that closes it, and every Pomodoro gets one —
+the fourth included; the long break is the bridge between one run of four and
+the next, offered after that fourth block is finished rather than in place of
+its break. The picker only offers: it never starts the session. A break that
+began on its own while the phone was in a pocket would run out unwatched, and a
+long break that ends unwatched clears the whole run.
+
 ### Metrics
 
 Every figure is aggregated in SQL. No endpoint returns rows for the client to
