@@ -22,7 +22,7 @@ import { SESSION_KIND_LABELS, SESSION_KINDS } from './session-types';
 import type { SessionKind } from './session-types';
 import { useActiveSession } from './use-active-session';
 import { useCountdown } from './use-countdown';
-import { cycleKey, useCycle } from './use-cycle';
+import { cycleKey, useCycle, useResetCycle } from './use-cycle';
 import { useSessionControls } from './use-session-controls';
 import { useSessionEndNotification } from './use-session-notification';
 
@@ -85,6 +85,16 @@ export function FocusScreen() {
   const [taskId, setTaskId] = useState<string | undefined>(params.taskId);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+
+  // The run can be started over by hand — for the user who came back after a
+  // long gap and is not the person who did those two Pomodoros any more. The
+  // screen follows the server's answer, and offers focus: a new run begins with
+  // work, whatever the old one was about to offer.
+  const restart = useResetCycle(() => {
+    setKind('FOCUS');
+    setNotice('Run reset — the next Pomodoro starts a new run.');
+  });
 
   // A task is chosen on the tasks screen, by its play button, never here: this
   // tab opened on its own is a plain focus session on nothing in particular.
@@ -102,6 +112,12 @@ export function FocusScreen() {
     // and a break started from there would carry no task at all.
     if (params.taskId) setKind('FOCUS');
   }
+
+  // A session that arrived — started on another device — while the reset was
+  // being weighed answers the question for it: the run is in use. Adjusted
+  // during render, like the route above, so the question is not asked again
+  // once that session is over.
+  if (session && restarting) setRestarting(false);
 
   // Shares its cache entry with the tasks screen, so opening the timer after
   // editing a task does not refetch the list.
@@ -174,6 +190,12 @@ export function FocusScreen() {
   const end = (notice: string, cancelled: boolean, run: () => void) => {
     intent.current = { notice, cancelled };
     run();
+  };
+
+  const failure = controls.error ?? restart.error;
+  const clearFailure = () => {
+    controls.clearError();
+    restart.clearError();
   };
 
   if (active.isPending && !session) return <LoadingState title="Checking for a running session…" />;
@@ -298,6 +320,25 @@ export function FocusScreen() {
                   : `${done} / ${cycles}`}
             </Text>
           </View>
+        ) : null}
+
+        {/* Only while nothing runs and there is a run to let go of. Mid-session
+            the question of what a reset does to the running Pomodoro has no
+            good answer, and at zero there is nothing to reset. */}
+        {knowsRun && !session && done > 0 ? (
+          <Pressable
+            onPress={() => setRestarting(true)}
+            disabled={restart.pending}
+            accessibilityRole="button"
+            accessibilityLabel="Start the run over"
+            hitSlop={8}
+            style={({ pressed }) => [styles.resetRun, (pressed || restart.pending) && styles.faded]}
+          >
+            <Icon name="refresh" size={14} color={color.inkSecondary} strokeWidth={2} />
+            <Text variant="labelStrong" tone="secondary">
+              Reset run
+            </Text>
+          </Pressable>
         ) : null}
 
         {chosen && shownKind === 'FOCUS' ? (
@@ -434,12 +475,42 @@ export function FocusScreen() {
         </Portal>
       ) : null}
 
+      {session ? null : (
+        <Portal>
+          <Dialog visible={restarting} onDismiss={() => setRestarting(false)} style={styles.dialog}>
+            <View style={styles.dialogBody}>
+              <Text variant="personName">Start the run over?</Text>
+              <Text variant="body" tone="secondary">
+                {resetCost(done)}
+              </Text>
+              <View style={styles.dialogActions}>
+                <Button
+                  label="Keep the run"
+                  variant="ghost"
+                  onPress={() => setRestarting(false)}
+                  style={styles.dialogAction}
+                />
+                <Button
+                  label="Reset run"
+                  loading={restart.pending}
+                  onPress={() => {
+                    setRestarting(false);
+                    restart.reset();
+                  }}
+                  style={styles.dialogAction}
+                />
+              </View>
+            </View>
+          </Dialog>
+        </Portal>
+      )}
+
       <Snackbar
-        visible={controls.error !== null}
-        onDismiss={controls.clearError}
-        action={{ label: 'Dismiss', onPress: controls.clearError }}
+        visible={failure !== null}
+        onDismiss={clearFailure}
+        action={{ label: 'Dismiss', onPress: clearFailure }}
       >
-        {controls.error ? describe(controls.error.code, controls.error.message) : ''}
+        {failure ? describe(failure.code, failure.message) : ''}
       </Snackbar>
 
       <Snackbar visible={notice !== null} onDismiss={() => setNotice(null)} duration={4000}>
@@ -493,6 +564,18 @@ function cancelCost(
     body: `Breaks are not what the run counts, so ${run} either way.`,
     notice: 'Break cancelled.',
   };
+}
+
+/**
+ * What starting the run over would and would not do, so the user is not left to
+ * find out from the statistics that nothing was lost — or from the row that the
+ * long break they were owed is gone.
+ */
+function resetCost(done: number): string {
+  const banked =
+    done === 1 ? 'The Pomodoro done so far stays' : `The ${done} Pomodoros done so far stay`;
+
+  return `${banked} in your statistics. Only the count toward the long break goes back to 0.`;
 }
 
 /**
@@ -657,6 +740,7 @@ const styles = StyleSheet.create({
   },
   cycleFill: { height: '100%', borderRadius: 2 },
   cycleCount: { paddingLeft: 4 },
+  resetRun: { marginTop: 14, flexDirection: 'row', alignItems: 'center', gap: 6 },
   taskCard: {
     marginTop: 28,
     alignSelf: 'stretch',

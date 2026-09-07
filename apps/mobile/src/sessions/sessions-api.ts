@@ -56,6 +56,18 @@ export function fetchCycle(): Promise<Cycle> {
   );
 }
 
+/**
+ * Starts the run over from now. The Pomodoros already done stay in the
+ * statistics; they only stop counting toward the long break. Answers with the
+ * run as the server now sees it, so the screen adopts it rather than assuming.
+ */
+export function resetCycle(): Promise<Cycle> {
+  return authenticatedRequest<Cycle>(
+    `/sessions/cycle/reset?timeZone=${encodeURIComponent(deviceTimeZone())}`,
+    { method: 'POST' },
+  );
+}
+
 export type SessionTransition = 'pause' | 'resume' | 'complete' | 'cancel';
 
 export function transitionSession(id: string, action: SessionTransition): Promise<Session> {
