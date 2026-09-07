@@ -1,6 +1,7 @@
 import { authenticatedRequest } from '../api/authenticated-request';
+import { deviceTimeZone } from '../api/device-time-zone';
 import { recordServerTime } from '../api/server-clock';
-import type { Session, StartSessionInput } from './session-types';
+import type { Cycle, Session, StartSessionInput } from './session-types';
 
 /**
  * Every endpoint here answers with the server's instant, and every call feeds
@@ -39,6 +40,20 @@ export function fetchActiveSession(): Promise<Session | null> {
 
     return active ?? null;
   });
+}
+
+/**
+ * How far into the current run of Pomodoros the user is.
+ *
+ * Asked of the server rather than counted here: the run has to survive the app
+ * being closed halfway through it, and a second device must not show a
+ * different position. The time zone travels with the request because the run
+ * restarts at the reader's midnight, not at UTC's.
+ */
+export function fetchCycle(): Promise<Cycle> {
+  return authenticatedRequest<Cycle>(
+    `/sessions/cycle?timeZone=${encodeURIComponent(deviceTimeZone())}`,
+  );
 }
 
 export type SessionTransition = 'pause' | 'resume' | 'complete' | 'cancel';

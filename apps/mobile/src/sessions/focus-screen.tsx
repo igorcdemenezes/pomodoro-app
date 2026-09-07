@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams } from 'expo-router';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { Snackbar } from 'react-native-paper';
+import { Dialog, Portal, Snackbar } from 'react-native-paper';
 
 import { serverNow } from '../api/server-clock';
 import { useAuthStore } from '../auth/auth-store';
 import { useProjects } from '../projects/use-projects';
-import { useDaily } from '../stats/use-stats';
 import { useTasks } from '../tasks/use-tasks';
 import { color, radius, sessionColor, size } from '../theme/tokens';
+import { Button } from '../ui/button';
 import { Icon } from '../ui/icon';
 import { Screen } from '../ui/screen';
 import { ErrorState, LoadingState } from '../ui/states';
@@ -21,10 +22,19 @@ import { SESSION_KIND_LABELS, SESSION_KINDS } from './session-types';
 import type { SessionKind } from './session-types';
 import { useActiveSession } from './use-active-session';
 import { useCountdown } from './use-countdown';
+import { cycleKey, useCycle } from './use-cycle';
 import { useSessionControls } from './use-session-controls';
 import { useSessionEndNotification } from './use-session-notification';
 
 const KEEP_AWAKE_TAG = 'pomodoro-session';
+
+/**
+ * One mark per Pomodoro, and the gap between them. The single long-break mark
+ * takes the width all of them together took, so the row keeps its shape when
+ * the scale changes underneath it.
+ */
+const MARK_WIDTH = 22;
+const MARK_GAP = 10;
 
 /**
  * Durations to preview while nothing is running. The server picks the real one
@@ -43,9 +53,29 @@ export function FocusScreen() {
 
   const active = useActiveSession();
   const controls = useSessionControls();
+  const cycle = useCycle();
+  const client = useQueryClient();
 
   const session = active.data ?? null;
   const remaining = useCountdown(session);
+
+  // The run of Pomodoros up to the next long break, as the server counts it.
+  // The profile only fills the length in while that answer is on its way, so a
+  // cold screen draws the right number of marks instead of four by default.
+  const cycles = Math.max(
+    1,
+    cycle.data?.cyclesUntilLongBreak ?? profile?.cyclesUntilLongBreak ?? 4,
+  );
+  // Marks are capped at the length of the run: skipping long breaks overshoots
+  // the count, and a row that grew past its own end would say less than a full
+  // one does.
+  const done = Math.min(cycle.data?.completedInCycle ?? 0, cycles);
+  // Until that answer exists the row is not drawn at all. A cached one usually
+  // arrives with the app, but when there is none — first run, no connection, an
+  // endpoint that answered an error — an empty row would read as a cycle at
+  // zero, which is a claim about the user's day rather than an admission that
+  // it has not been fetched.
+  const knowsRun = cycle.data !== undefined;
 
   // Booked with the operating system, so the end of a session reaches the user
   // with the app in the background — where a Pomodoro usually is.
@@ -54,6 +84,7 @@ export function FocusScreen() {
   const [kind, setKind] = useState<SessionKind>('FOCUS');
   const [taskId, setTaskId] = useState<string | undefined>(params.taskId);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   // A task is chosen on the tasks screen, by its play button, never here: this
   // tab opened on its own is a plain focus session on nothing in particular.
@@ -66,13 +97,16 @@ export function FocusScreen() {
   if (params.taskId !== arrivedWith) {
     setArrivedWith(params.taskId);
     setTaskId(params.taskId);
+    // A task's play button asks for a Pomodoro on that task, whatever the
+    // screen was resting on: after a finished focus it offers the short break,
+    // and a break started from there would carry no task at all.
+    if (params.taskId) setKind('FOCUS');
   }
 
   // Shares its cache entry with the tasks screen, so opening the timer after
   // editing a task does not refetch the list.
   const tasks = useTasks({});
   const projects = useProjects(true);
-  const daily = useDaily('week');
 
   const chosenId = session?.taskId ?? taskId;
   const chosen = chosenId ? tasks.data?.find((task) => task.id === chosenId) : undefined;
@@ -81,9 +115,15 @@ export function FocusScreen() {
     : undefined;
 
   // Set when the user themselves ended the session, so the confirmation says
-  // what happened rather than announcing that time ran out.
-  const intent = useRef<string | null>(null);
+  // what happened rather than announcing that time ran out — and so an
+  // abandoned Pomodoro is told apart from a finished one, which the method
+  // rewards very differently.
+  const intent = useRef<{ notice: string; cancelled: boolean } | null>(null);
   const wasExpiring = useRef(false);
+  // The kind that was on screen while the session ran. Read once it is gone, to
+  // offer what comes next; null when nothing ran here, so a launch onto an idle
+  // screen offers focus rather than a break nobody earned.
+  const ran = useRef<SessionKind | null>(null);
 
   // The screen stays lit while a session runs: a Pomodoro is watched, and a
   // phone that sleeps mid-focus makes the timer feel like it stopped.
@@ -97,26 +137,42 @@ export function FocusScreen() {
     };
   }, [session?.status]);
 
-  // A session leaves the screen only once the server has settled it, so the
-  // confirmation reports something that is already recorded.
+  // Everything that happens when a session leaves the screen — which it does
+  // only once the server has settled it, so all of this reports something that
+  // is already recorded.
   useEffect(() => {
     if (session) {
+      ran.current = session.kind;
       wasExpiring.current = hasExpired(session, serverNow());
       return;
     }
 
     if (intent.current) {
-      setNotice(intent.current);
-      intent.current = null;
+      setNotice(intent.current.notice);
     } else if (wasExpiring.current) {
       setNotice('Time is up — the session was recorded.');
     }
 
-    wasExpiring.current = false;
-  }, [session, remaining]);
+    if (ran.current) {
+      // The session left while the question was open — its own deadline
+      // passing, or another device ending it. Asking whether to give up on
+      // something already recorded would be asking about nothing, and a
+      // question left standing would reopen on the next session.
+      setConfirming(false);
+      // The run moved on — whether the user ended the session or the server
+      // settled it once the deadline passed — so the row is asked for again,
+      // and the screen moves on to whatever the method says comes next.
+      void client.invalidateQueries({ queryKey: cycleKey });
+      setKind(nextKind(ran.current, intent.current?.cancelled ?? false, done, cycles));
+      ran.current = null;
+    }
 
-  const end = (label: string, run: () => void) => {
-    intent.current = label;
+    intent.current = null;
+    wasExpiring.current = false;
+  }, [session, remaining, client, done, cycles]);
+
+  const end = (notice: string, cancelled: boolean, run: () => void) => {
+    intent.current = { notice, cancelled };
     run();
   };
 
@@ -149,12 +205,31 @@ export function FocusScreen() {
   const palette = sessionColor[shownKind];
   const durationSec = session?.durationSec ?? durations[shownKind];
 
-  const cycles = profile?.cyclesUntilLongBreak ?? 4;
-  // Where this session sits in the run up to a long break, counted from the
-  // focus sessions actually recorded today rather than from anything held here:
-  // the count has to survive the app being closed mid-cycle.
-  const doneToday = daily.data?.at(-1)?.completedSessions ?? 0;
-  const inCycle = cycles > 0 ? doneToday % cycles : 0;
+  // The row is scaled to the phase on screen. Four marks while the run is being
+  // earned; a single one once the long break is what the screen is about, since
+  // that break happens once per run — four marks for it would be counting in a
+  // unit that only comes round a quarter as often.
+  const resting = shownKind === 'LONG_BREAK';
+  const marks = resting ? 1 : cycles;
+  // The session on screen is the mark being earned, so it fills as the ring
+  // does: the focus session earns its Pomodoro, the long break earns the rest
+  // that closes the run. A short break earns neither — it is part of the block
+  // already marked — and leaves the row where the last focus left it.
+  const earning =
+    session && (resting || shownKind === 'FOCUS') ? progress(session, serverNow()) : 0;
+  // A long break is owed once the run is complete, and is what clears it. The
+  // notice is for the rest of the screen: once the break itself is what is being
+  // shown, the row is already saying it.
+  const longBreakDue = done >= cycles && !resting;
+
+  // What cancelling would cost, read from the session on screen so the question
+  // names the minutes actually at stake.
+  const cost = cancelCost(
+    shownKind,
+    session ? Math.max(0, Math.floor((session.durationSec * 1000 - remaining) / 60000)) : 0,
+    done,
+    cycles,
+  );
 
   return (
     <>
@@ -181,23 +256,49 @@ export function FocusScreen() {
           />
         </View>
 
-        <View
-          style={styles.cycles}
-          accessibilityLabel={`${inCycle} of ${cycles} focus sessions before a long break`}
-        >
-          {Array.from({ length: cycles }, (_, index) => (
-            <View
-              key={index}
-              style={[
-                styles.cycleBar,
-                { backgroundColor: index < inCycle ? palette.fill : color.cardBorder },
-              ]}
-            />
-          ))}
-          <Text variant="caption" tone="secondary" style={styles.cycleCount}>
-            {inCycle} / {cycles}
-          </Text>
-        </View>
+        {knowsRun ? (
+          <View
+            style={styles.cycles}
+            accessibilityLabel={
+              resting
+                ? `Long break, ${Math.floor(earning)} of 1`
+                : longBreakDue
+                  ? `${done} of ${cycles} focus sessions done — a long break is next`
+                  : `${done} of ${cycles} focus sessions before a long break`
+            }
+          >
+            {Array.from({ length: marks }, (_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.cycleBar,
+                  resting && { width: cycles * MARK_WIDTH + (cycles - 1) * MARK_GAP },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.cycleFill,
+                    {
+                      backgroundColor: palette.fill,
+                      width: `${fill(index, done, earning) * 100}%`,
+                    },
+                  ]}
+                />
+              </View>
+            ))}
+            <Text
+              variant="caption"
+              tone={longBreakDue ? 'primary' : 'secondary'}
+              style={styles.cycleCount}
+            >
+              {resting
+                ? `${Math.floor(earning)} / 1`
+                : longBreakDue
+                  ? 'Long break next'
+                  : `${done} / ${cycles}`}
+            </Text>
+          </View>
+        ) : null}
 
         {chosen && shownKind === 'FOCUS' ? (
           <Card style={styles.taskCard}>
@@ -228,16 +329,19 @@ export function FocusScreen() {
           </Card>
         ) : null}
 
+        {/* The phase is the method's to decide, not the user's — the run above
+            already says where they are in it — so this row reports the answer
+            instead of asking the question. The three are kept side by side
+            because knowing which of them is next means little without the two
+            it is not. */}
         {session ? null : (
-          <View style={styles.kinds}>
+          <View
+            style={styles.kinds}
+            accessible
+            accessibilityLabel={`Up next: ${SESSION_KIND_LABELS[kind]}`}
+          >
             {SESSION_KINDS.map((value) => (
-              <KindOption
-                key={value}
-                kind={value}
-                selected={value === kind}
-                disabled={controls.pending}
-                onPress={() => setKind(value)}
-              />
+              <KindMark key={value} kind={value} current={value === kind} />
             ))}
           </View>
         )}
@@ -249,7 +353,7 @@ export function FocusScreen() {
             <Control
               icon="close"
               label="CANCEL"
-              onPress={() => end('Session cancelled.', () => controls.cancel(session.id))}
+              onPress={() => setConfirming(true)}
               disabled={controls.pending}
             />
             {session.status === 'RUNNING' ? (
@@ -274,7 +378,7 @@ export function FocusScreen() {
             <Control
               icon="check"
               label="COMPLETE"
-              onPress={() => end('Session completed.', () => controls.complete(session.id))}
+              onPress={() => end('Session completed.', false, () => controls.complete(session.id))}
               disabled={controls.pending}
             />
           </View>
@@ -300,6 +404,36 @@ export function FocusScreen() {
         </Text>
       </Screen>
 
+      {session ? (
+        <Portal>
+          <Dialog visible={confirming} onDismiss={() => setConfirming(false)} style={styles.dialog}>
+            <View style={styles.dialogBody}>
+              <Text variant="personName">{cost.title}</Text>
+              <Text variant="body" tone="secondary">
+                {cost.body}
+              </Text>
+              <View style={styles.dialogActions}>
+                <Button
+                  label="Keep going"
+                  variant="ghost"
+                  onPress={() => setConfirming(false)}
+                  style={styles.dialogAction}
+                />
+                <Button
+                  label="Cancel session"
+                  loading={controls.pending}
+                  onPress={() => {
+                    setConfirming(false);
+                    end(cost.notice, true, () => controls.cancel(session.id));
+                  }}
+                  style={styles.dialogAction}
+                />
+              </View>
+            </View>
+          </Dialog>
+        </Portal>
+      ) : null}
+
       <Snackbar
         visible={controls.error !== null}
         onDismiss={controls.clearError}
@@ -313,6 +447,93 @@ export function FocusScreen() {
       </Snackbar>
     </>
   );
+}
+
+/**
+ * What cancelling the session on screen would cost, and what it would not.
+ *
+ * The count does not move when a session is cancelled: the interrupted Pomodoro
+ * is void, so it earns no place in the run, and the ones already banked are not
+ * taken away with it. On screen that reads as a button that did nothing, which
+ * is the whole reason this text exists — the consequence is explained here,
+ * while the user can still change their mind, rather than left to be inferred
+ * from a row that stayed put.
+ */
+function cancelCost(
+  kind: SessionKind,
+  minutes: number,
+  done: number,
+  cycles: number,
+): { title: string; body: string; notice: string } {
+  const run = `the run stays at ${done} of ${cycles}`;
+
+  if (kind === 'FOCUS') {
+    // Only a focus session has minutes worth naming: they are the ones the
+    // statistics would have kept.
+    const spent =
+      minutes >= 1 ? `The ${minutes} min so far are not recorded` : 'Nothing is recorded';
+
+    return {
+      title: 'Cancel this Pomodoro?',
+      body: `${spent}, and ${run} — a Pomodoro counts only once it finishes.`,
+      notice: 'Session cancelled — this Pomodoro did not count toward the run.',
+    };
+  }
+
+  if (kind === 'LONG_BREAK') {
+    return {
+      title: 'Cancel this long break?',
+      body: `Only a long break that finishes clears the run, so ${run} and the next one is still owed.`,
+      notice: 'Long break cancelled — the run is still waiting to be cleared.',
+    };
+  }
+
+  return {
+    title: 'Cancel this break?',
+    body: `Breaks are not what the run counts, so ${run} either way.`,
+    notice: 'Break cancelled.',
+  };
+}
+
+/**
+ * What the screen moves to once a session ends.
+ *
+ * A block is a Pomodoro and the short break that closes it, and every Pomodoro
+ * gets one — the fourth included. The long break is not that fourth block's
+ * rest: it is the bridge between one run of four and the next, and it comes
+ * after the block is finished rather than in place of its break.
+ *
+ * An abandoned Pomodoro earns nothing: the screen stays on focus, because the
+ * session it was meant to be never happened, and the count on the server agrees.
+ *
+ * Offered, never started: the app says what comes next and the user decides
+ * when. A break that began on its own while the phone was in a pocket would run
+ * out unwatched — and a long break that ends unwatched clears the whole run.
+ */
+function nextKind(
+  ended: SessionKind,
+  cancelled: boolean,
+  done: number,
+  cycles: number,
+): SessionKind {
+  if (ended === 'FOCUS') return cancelled ? 'FOCUS' : 'SHORT_BREAK';
+
+  // By the time a short break ends, the Pomodoro it belongs to has long been
+  // counted — the run is asked for again the moment any session ends — so this
+  // reads the finished block, not a stale one.
+  if (ended === 'SHORT_BREAK') return done >= cycles ? 'LONG_BREAK' : 'FOCUS';
+
+  return 'FOCUS';
+}
+
+/**
+ * How much of one cycle mark is filled: whole for a Pomodoro already recorded,
+ * and the running one's own progress for the mark being earned right now.
+ */
+function fill(index: number, done: number, earning: number): number {
+  if (index < done) return 1;
+
+  return index === done ? earning : 0;
 }
 
 /**
@@ -374,44 +595,29 @@ function Control({
 }
 
 /**
- * One of the three kinds a session can be, before one is running.
+ * One of the three kinds a session can be, with the one coming next marked.
  *
- * Drawn as the same pill the timer wears while a session is on, in the same
- * colour that session would take: what is being chosen is what the next screen
- * will look like, so the control shows it rather than describing it.
+ * Nothing here is tappable. The next phase follows from the method and from the
+ * run the server is counting, so offering three equal buttons would invite a
+ * choice the screen has already made — and let a long break start on a run
+ * nobody has earned, which the marks above cannot even draw.
+ *
+ * The current one is the same pill the timer wears while a session is on, in
+ * the colour that session will take. The other two lose their border with their
+ * affordance: an outline is what this design system uses to promise a tap.
  */
-function KindOption({
-  kind,
-  selected,
-  disabled,
-  onPress,
-}: {
-  kind: SessionKind;
-  selected: boolean;
-  disabled: boolean;
-  onPress: () => void;
-}) {
+function KindMark({ kind, current }: { kind: SessionKind; current: boolean }) {
   const palette = sessionColor[kind];
 
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      style={({ pressed }) => [
-        styles.kindOption,
-        selected
-          ? { backgroundColor: palette.tint }
-          : { borderWidth: 1, borderColor: color.controlBorder },
-        (pressed || disabled) && styles.faded,
-      ]}
+    <View
+      style={[styles.kindMark, current ? { backgroundColor: palette.tint } : styles.kindMarkIdle]}
     >
-      <Dot size={6} color={selected ? palette.fill : color.inkIcon} />
-      <Text variant="labelStrong" color={selected ? palette.ink : color.inkSecondary}>
+      <Dot size={6} color={current ? palette.fill : color.inkIcon} />
+      <Text variant="labelStrong" color={current ? palette.ink : color.inkSecondary}>
         {SESSION_KIND_LABELS[kind]}
       </Text>
-    </Pressable>
+    </View>
   );
 }
 
@@ -441,8 +647,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   ring: { marginTop: 28 },
-  cycles: { marginTop: 24, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  cycleBar: { width: 22, height: 4, borderRadius: 2 },
+  cycles: { marginTop: 24, flexDirection: 'row', alignItems: 'center', gap: MARK_GAP },
+  cycleBar: {
+    width: MARK_WIDTH,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: color.cardBorder,
+    overflow: 'hidden',
+  },
+  cycleFill: { height: '100%', borderRadius: 2 },
   cycleCount: { paddingLeft: 4 },
   taskCard: {
     marginTop: 28,
@@ -455,7 +668,7 @@ const styles = StyleSheet.create({
   },
   taskBody: { flex: 1, gap: 2 },
   kinds: { marginTop: 28, flexDirection: 'row', gap: 8 },
-  kindOption: {
+  kindMark: {
     height: size.chip,
     borderRadius: radius.pill,
     paddingHorizontal: 14,
@@ -463,10 +676,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 7,
   },
+  kindMarkIdle: { opacity: 0.45 },
   spacer: { flex: 1, minHeight: 28 },
   controls: { flexDirection: 'row', justifyContent: 'center', gap: 36 },
   control: { alignItems: 'center', gap: 10, width: 84 },
   controlMark: { alignItems: 'center', justifyContent: 'center' },
   faded: { opacity: 0.6 },
   hint: { marginTop: 20, textAlign: 'center' },
+  dialog: { backgroundColor: color.surface, borderRadius: radius.card },
+  dialogBody: { padding: 20, gap: 12 },
+  dialogActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  dialogAction: { flex: 1 },
 });

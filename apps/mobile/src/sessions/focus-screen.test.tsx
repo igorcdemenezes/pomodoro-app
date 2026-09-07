@@ -7,7 +7,6 @@ import type { Task } from '../tasks/task-types';
 import type { Session } from './session-types';
 import * as tasksApi from '../tasks/tasks-api';
 import * as projectsApi from '../projects/projects-api';
-import * as statsApi from '../stats/stats-api';
 import * as sessionNotification from './session-notification';
 import * as sessionsApi from './sessions-api';
 import { FocusScreen } from './focus-screen';
@@ -16,7 +15,6 @@ jest.mock('./sessions-api');
 jest.mock('./session-notification');
 jest.mock('../tasks/tasks-api');
 jest.mock('../projects/projects-api');
-jest.mock('../stats/stats-api');
 // The task a session is for arrives in the route, from a task's play button.
 const mockRoute: { params: { taskId?: string } } = { params: {} };
 jest.mock('expo-router', () => ({ useLocalSearchParams: () => mockRoute.params }));
@@ -30,7 +28,6 @@ const api = jest.mocked(sessionsApi);
 const notifier = jest.mocked(sessionNotification);
 const tasks = jest.mocked(tasksApi);
 const projects = jest.mocked(projectsApi);
-const stats = jest.mocked(statsApi);
 
 const NOW = '2026-09-03T12:00:00.000Z';
 
@@ -69,18 +66,26 @@ function task(overrides: Partial<Task> = {}): Task {
 
 // `render` and `fireEvent` are asynchronous in Testing Library 14: both flush
 // React's work before returning, so every interaction here is awaited.
-function renderScreen() {
+async function renderScreen() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
 
-  return render(
+  // Built fresh each time: React skips a subtree handed the very same element
+  // object again, so re-rendering with a reused one would change nothing.
+  const tree = () => (
     <PaperProvider>
       <QueryClientProvider client={client}>
         <FocusScreen />
       </QueryClientProvider>
-    </PaperProvider>,
+    </PaperProvider>
   );
+  const view = await render(tree());
+
+  // The route is read on every render, so a test that moves the params — a
+  // task's play button pressed while this tab is already mounted — re-renders
+  // the tree to deliver them, the way navigation would.
+  return { ...view, rerender: () => view.rerender(tree()) };
 }
 
 describe('focus screen', () => {
@@ -92,7 +97,7 @@ describe('focus screen', () => {
     notifier.scheduleSessionEnd.mockResolvedValue('notification-1');
     tasks.fetchTasks.mockResolvedValue([task()]);
     projects.fetchProjects.mockResolvedValue([]);
-    stats.fetchDaily.mockResolvedValue([]);
+    api.fetchCycle.mockResolvedValue({ completedInCycle: 0, cyclesUntilLongBreak: 4 });
   });
 
   afterEach(() => {
@@ -238,6 +243,37 @@ describe('focus screen', () => {
     });
   });
 
+  // After a Pomodoro the screen rests on the short break it earned. A task's
+  // play button pressed from there asks for a Pomodoro on that task, not for
+  // the break: a break carries no task, so the history would show it on nothing.
+  it('starts a focus on the task it was opened for, even after a Pomodoro', async () => {
+    api.fetchActiveSession.mockResolvedValueOnce(running()).mockResolvedValue(null);
+    api.transitionSession.mockResolvedValue(
+      running({ status: 'COMPLETED', dueAt: null, remainingSec: 0, endedAt: NOW }),
+    );
+    api.startSession.mockResolvedValue(running({ taskId: TASK_ID }));
+
+    const view = await renderScreen();
+
+    await fireEvent.press(await screen.findByText('COMPLETE'));
+
+    expect(await screen.findByLabelText('Up next: Short break')).toBeOnTheScreen();
+
+    mockRoute.params = { taskId: TASK_ID };
+    await view.rerender();
+
+    expect(await screen.findByText('Write the ADR')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByText('START'));
+
+    await waitFor(() => expect(api.startSession).toHaveBeenCalled());
+    expect(api.startSession.mock.calls[0][0]).toEqual({
+      kind: 'FOCUS',
+      taskId: TASK_ID,
+      clientMutationId: 'ffffffff-0000-4000-8000-00000000000f',
+    });
+  });
+
   it('starts on nothing in particular when the tab is opened on its own', async () => {
     api.fetchActiveSession.mockResolvedValue(null);
     api.startSession.mockResolvedValue(running());
@@ -283,12 +319,331 @@ describe('focus screen', () => {
 
   it('names no task on a break, which is not work on anything', async () => {
     mockRoute.params = { taskId: TASK_ID };
+    api.fetchActiveSession
+      .mockResolvedValueOnce(running({ taskId: TASK_ID }))
+      .mockResolvedValue(null);
+    api.transitionSession.mockResolvedValue(
+      running({ taskId: TASK_ID, status: 'COMPLETED', dueAt: null, remainingSec: 0, endedAt: NOW }),
+    );
+
+    await renderScreen();
+
+    expect(await screen.findByText('Write the ADR')).toBeOnTheScreen();
+
+    await fireEvent.press(await screen.findByText('COMPLETE'));
+
+    expect(await screen.findByText('START')).toBeOnTheScreen();
+    expect(screen.queryByText('Write the ADR')).not.toBeOnTheScreen();
+  });
+
+  // The phase follows the method and the run the server counts, so the three
+  // are reported rather than offered: a tappable long break could be started on
+  // a run nobody has earned, which the marks above cannot even draw.
+  it('does not let the phase be picked by hand', async () => {
     api.fetchActiveSession.mockResolvedValue(null);
 
     await renderScreen();
 
-    await fireEvent.press(await screen.findByText('Short break'));
+    expect(await screen.findByText('Short break')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Short break' })).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Long break' })).not.toBeOnTheScreen();
+  });
+  describe('the run up to a long break', () => {
+    it('marks the Pomodoros the server has recorded in the current run', async () => {
+      api.fetchActiveSession.mockResolvedValue(null);
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 2, cyclesUntilLongBreak: 4 });
 
-    expect(screen.queryByText('Write the ADR')).not.toBeOnTheScreen();
+      await renderScreen();
+
+      expect(await screen.findByText('2 / 4')).toBeOnTheScreen();
+    });
+
+    it('draws the run at the length the user configured', async () => {
+      api.fetchActiveSession.mockResolvedValue(null);
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 1, cyclesUntilLongBreak: 6 });
+
+      await renderScreen();
+
+      expect(await screen.findByText('1 / 6')).toBeOnTheScreen();
+    });
+
+    it('says a long break is next once the run is complete', async () => {
+      api.fetchActiveSession.mockResolvedValue(null);
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 4, cyclesUntilLongBreak: 4 });
+
+      await renderScreen();
+
+      expect(await screen.findByText('Long break next')).toBeOnTheScreen();
+    });
+
+    // Skipping long breaks pushes the count past the end of the run; the row
+    // has nowhere to say five, and saying "a long break is next" is the point.
+    it('does not count past the end of the run', async () => {
+      api.fetchActiveSession.mockResolvedValue(null);
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 7, cyclesUntilLongBreak: 4 });
+
+      await renderScreen();
+
+      expect(await screen.findByText('Long break next')).toBeOnTheScreen();
+    });
+
+    // The long break happens once per run, so while it is what the screen is
+    // about the row measures it — not the four Pomodoros that paid for it.
+    it('measures the long break itself while it runs', async () => {
+      api.fetchActiveSession.mockResolvedValue(running({ kind: 'LONG_BREAK', durationSec: 900 }));
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 4, cyclesUntilLongBreak: 4 });
+
+      await renderScreen();
+
+      expect(await screen.findByText('0 / 1')).toBeOnTheScreen();
+      expect(screen.queryByText('4 / 4')).not.toBeOnTheScreen();
+      expect(screen.queryByText('Long break next')).not.toBeOnTheScreen();
+    });
+
+    it('reads the long break as done once its time is up', async () => {
+      api.fetchActiveSession.mockResolvedValue(
+        running({ kind: 'LONG_BREAK', durationSec: 900, dueAt: NOW, remainingSec: 0 }),
+      );
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 4, cyclesUntilLongBreak: 4 });
+
+      await renderScreen();
+
+      expect(await screen.findByText('1 / 1')).toBeOnTheScreen();
+    });
+
+    // The long break is what clears the run, so once it is over the row stops
+    // measuring the rest and goes back to counting the Pomodoros of the next
+    // one.
+    it('goes back to the run once the long break is over', async () => {
+      api.fetchActiveSession
+        .mockResolvedValueOnce(running({ kind: 'LONG_BREAK', durationSec: 900 }))
+        .mockResolvedValue(null);
+      api.transitionSession.mockResolvedValue(
+        running({
+          kind: 'LONG_BREAK',
+          status: 'COMPLETED',
+          dueAt: null,
+          remainingSec: 0,
+          endedAt: NOW,
+        }),
+      );
+      api.fetchCycle
+        .mockResolvedValueOnce({ completedInCycle: 4, cyclesUntilLongBreak: 4 })
+        .mockResolvedValue({ completedInCycle: 0, cyclesUntilLongBreak: 4 });
+
+      await renderScreen();
+
+      expect(await screen.findByText('0 / 1')).toBeOnTheScreen();
+
+      await fireEvent.press(await screen.findByText('COMPLETE'));
+
+      expect(await screen.findByText('0 / 4')).toBeOnTheScreen();
+    });
+
+    // An empty row would read as a cycle at zero — a claim about the user's day,
+    // when the truth is that the answer never arrived.
+    it('draws no row at all while the run is unknown', async () => {
+      api.fetchActiveSession.mockResolvedValue(null);
+      api.fetchCycle.mockRejectedValue(new Error('offline'));
+
+      await renderScreen();
+
+      expect(await screen.findByText('START')).toBeOnTheScreen();
+      expect(screen.queryByText('0 / 4')).not.toBeOnTheScreen();
+    });
+
+    it('asks where the run stands again once a session has ended', async () => {
+      api.fetchActiveSession.mockResolvedValueOnce(running()).mockResolvedValue(null);
+      api.transitionSession.mockResolvedValue(
+        running({ status: 'COMPLETED', dueAt: null, remainingSec: 0, endedAt: NOW }),
+      );
+      api.fetchCycle
+        .mockResolvedValueOnce({ completedInCycle: 2, cyclesUntilLongBreak: 4 })
+        .mockResolvedValue({ completedInCycle: 3, cyclesUntilLongBreak: 4 });
+
+      await renderScreen();
+
+      await fireEvent.press(await screen.findByText('COMPLETE'));
+
+      expect(await screen.findByText('3 / 4')).toBeOnTheScreen();
+    });
+  });
+  // The count does not move when a session is cancelled, which on screen reads
+  // as a button that did nothing. The question is where that gets explained —
+  // and it is a question at all because a thumb lands beside PAUSE.
+  describe('cancelling a session', () => {
+    it('asks first, naming the minutes at stake and what survives', async () => {
+      api.fetchActiveSession.mockResolvedValue(
+        running({ remainingSec: 900, dueAt: '2026-09-03T12:15:00.000Z' }),
+      );
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 3, cyclesUntilLongBreak: 4 });
+
+      await renderScreen();
+
+      await fireEvent.press(await screen.findByText('CANCEL'));
+
+      expect(await screen.findByText('Cancel this Pomodoro?')).toBeOnTheScreen();
+      expect(
+        screen.getByText(
+          'The 10 min so far are not recorded, and the run stays at 3 of 4 — a Pomodoro counts only once it finishes.',
+        ),
+      ).toBeOnTheScreen();
+      expect(api.transitionSession).not.toHaveBeenCalled();
+    });
+
+    it('leaves the session running when the question is turned down', async () => {
+      api.fetchActiveSession.mockResolvedValue(running());
+
+      await renderScreen();
+
+      await fireEvent.press(await screen.findByText('CANCEL'));
+      await fireEvent.press(await screen.findByText('Keep going'));
+
+      expect(api.transitionSession).not.toHaveBeenCalled();
+      expect(screen.getByText('PAUSE')).toBeOnTheScreen();
+    });
+
+    // A break is not what the run counts, so cancelling one is the cheapest
+    // thing on this screen — and saying so is what stops the user guessing.
+    it('says a cancelled break costs the run nothing', async () => {
+      api.fetchActiveSession.mockResolvedValue(running({ kind: 'SHORT_BREAK', durationSec: 300 }));
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 2, cyclesUntilLongBreak: 4 });
+
+      await renderScreen();
+
+      await fireEvent.press(await screen.findByText('CANCEL'));
+
+      expect(await screen.findByText('Cancel this break?')).toBeOnTheScreen();
+      expect(screen.getByText(/the run stays at 2 of 4 either way/)).toBeOnTheScreen();
+    });
+
+    // The long break is the one session whose ending clears the run, so giving
+    // up on one leaves a debt the other two never do.
+    it('says a cancelled long break leaves the run uncleared', async () => {
+      api.fetchActiveSession.mockResolvedValue(running({ kind: 'LONG_BREAK', durationSec: 900 }));
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 4, cyclesUntilLongBreak: 4 });
+
+      await renderScreen();
+
+      await fireEvent.press(await screen.findByText('CANCEL'));
+
+      expect(await screen.findByText('Cancel this long break?')).toBeOnTheScreen();
+      expect(screen.getByText(/the next one is still owed/)).toBeOnTheScreen();
+    });
+
+    // The banked Pomodoros survive the one that was interrupted, and the
+    // confirmation afterwards says so rather than naming the button pressed.
+    it('keeps the run where it was and reports why', async () => {
+      api.fetchActiveSession.mockResolvedValueOnce(running()).mockResolvedValue(null);
+      api.transitionSession.mockResolvedValue(
+        running({ status: 'CANCELLED', dueAt: null, remainingSec: 0, endedAt: NOW }),
+      );
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 3, cyclesUntilLongBreak: 4 });
+
+      await renderScreen();
+
+      await fireEvent.press(await screen.findByText('CANCEL'));
+      await fireEvent.press(await screen.findByText('Cancel session'));
+
+      // Awaited on the notice, not on the row: the row already said 3 / 4
+      // before the tap, so waiting on it would prove nothing about the cancel
+      // having landed.
+      expect(
+        await screen.findByText('Session cancelled — this Pomodoro did not count toward the run.'),
+      ).toBeOnTheScreen();
+      expect(screen.getByText('3 / 4')).toBeOnTheScreen();
+    });
+  });
+
+  describe('what the screen moves to next', () => {
+    // The screen never starts the next session on its own: a break that began
+    // in a pocket would run out unwatched.
+    const ended = (kind: 'FOCUS' | 'SHORT_BREAK' | 'LONG_BREAK') => {
+      api.fetchActiveSession.mockResolvedValueOnce(running({ kind })).mockResolvedValue(null);
+      api.transitionSession.mockResolvedValue(
+        running({ kind, status: 'COMPLETED', dueAt: null, remainingSec: 0, endedAt: NOW }),
+      );
+      api.startSession.mockResolvedValue(running());
+    };
+
+    it('offers the short break a finished Pomodoro earned', async () => {
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 1, cyclesUntilLongBreak: 4 });
+      ended('FOCUS');
+
+      await renderScreen();
+      await fireEvent.press(await screen.findByText('COMPLETE'));
+      await fireEvent.press(await screen.findByText('START'));
+
+      await waitFor(() => expect(api.startSession).toHaveBeenCalled());
+      expect(api.startSession.mock.calls[0][0]).toMatchObject({ kind: 'SHORT_BREAK' });
+    });
+
+    // The fourth Pomodoro gets its short break like the other three: the long
+    // one is the bridge to the next run, not the fourth block's rest.
+    it('offers the short break even to the Pomodoro that closed the run', async () => {
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 3, cyclesUntilLongBreak: 4 });
+      ended('FOCUS');
+
+      await renderScreen();
+      await fireEvent.press(await screen.findByText('COMPLETE'));
+      await fireEvent.press(await screen.findByText('START'));
+
+      await waitFor(() => expect(api.startSession).toHaveBeenCalled());
+      expect(api.startSession.mock.calls[0][0]).toMatchObject({ kind: 'SHORT_BREAK' });
+    });
+
+    it('offers the long break once the block that closed the run is over', async () => {
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 4, cyclesUntilLongBreak: 4 });
+      ended('SHORT_BREAK');
+
+      await renderScreen();
+      await fireEvent.press(await screen.findByText('COMPLETE'));
+      await fireEvent.press(await screen.findByText('START'));
+
+      await waitFor(() => expect(api.startSession).toHaveBeenCalled());
+      expect(api.startSession.mock.calls[0][0]).toMatchObject({ kind: 'LONG_BREAK' });
+    });
+
+    it('offers work again once a break inside the run is over', async () => {
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 2, cyclesUntilLongBreak: 4 });
+      ended('SHORT_BREAK');
+
+      await renderScreen();
+      await fireEvent.press(await screen.findByText('COMPLETE'));
+      await fireEvent.press(await screen.findByText('START'));
+
+      await waitFor(() => expect(api.startSession).toHaveBeenCalled());
+      expect(api.startSession.mock.calls[0][0]).toMatchObject({ kind: 'FOCUS' });
+    });
+
+    // An abandoned Pomodoro earns no break — the server does not count it
+    // either — so the screen stays where it was.
+    it('offers no break after a cancelled Pomodoro', async () => {
+      api.fetchCycle.mockResolvedValue({ completedInCycle: 1, cyclesUntilLongBreak: 4 });
+      api.fetchActiveSession.mockResolvedValueOnce(running()).mockResolvedValue(null);
+      api.transitionSession.mockResolvedValue(
+        running({ status: 'CANCELLED', dueAt: null, remainingSec: 0, endedAt: NOW }),
+      );
+      api.startSession.mockResolvedValue(running());
+
+      await renderScreen();
+      await fireEvent.press(await screen.findByText('CANCEL'));
+      await fireEvent.press(await screen.findByText('Cancel session'));
+      await fireEvent.press(await screen.findByText('START'));
+
+      await waitFor(() => expect(api.startSession).toHaveBeenCalled());
+      expect(api.startSession.mock.calls[0][0]).toMatchObject({ kind: 'FOCUS' });
+    });
+
+    it('offers focus on a screen where nothing has run', async () => {
+      api.fetchActiveSession.mockResolvedValue(null);
+      api.startSession.mockResolvedValue(running());
+
+      await renderScreen();
+      await fireEvent.press(await screen.findByText('START'));
+
+      await waitFor(() => expect(api.startSession).toHaveBeenCalled());
+      expect(api.startSession.mock.calls[0][0]).toMatchObject({ kind: 'FOCUS' });
+    });
   });
 });

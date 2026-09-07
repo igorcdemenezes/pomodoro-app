@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { HttpError } from '../api/http-error';
 import { useAuthStore } from '../auth/auth-store';
+import { cycleKey } from '../sessions/use-cycle';
 import { fetchProfile, updateProfile } from './profile-api';
 import type { UpdateProfileInput } from './profile-api';
 
@@ -40,6 +41,11 @@ export function useProfileMutation() {
       // invalidated: a refetch would only ask for what is already in hand.
       client.setQueryData(profileKey, user);
       setUser(user);
+
+      // The timer draws one mark per cycle, and the server reports the length
+      // alongside the count: changing the preference here has to reach that
+      // answer, or the row would keep its old width until it went stale.
+      void client.invalidateQueries({ queryKey: cycleKey });
     },
   });
 
