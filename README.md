@@ -156,6 +156,7 @@ npm run api start:dev      # watch mode on http://localhost:3000/api/v1
 | `PATCH /api/v1/sessions/:id/pause` `resume` `complete` `cancel` | State transitions                                     |
 | `GET /api/v1/sessions`                                          | Finished sessions, cursor-paginated                   |
 | `GET /api/v1/sessions/cycle`                                    | Focus sessions done in the run before a long break    |
+| `POST /api/v1/sessions/cycle/reset`                             | Start the run over; nothing recorded is touched       |
 | `GET /api/v1/stats/summary` `daily` `by-project`                | Productivity metrics, aggregated in SQL               |
 | `GET /api/v1/health`                                            | Readiness probe, 503 when the database is unreachable |
 | `GET /api/docs` `docs-json`                                     | Swagger UI and the OpenAPI document                   |
@@ -258,10 +259,20 @@ two devices must not be able to disagree about which Pomodoro this is.
 | Short break             | Neutral: it neither counts nor clears            |
 | Long break completed    | The run restarts — that is what a long break is  |
 | Local midnight          | The run restarts                                 |
+| Reset by the user       | The run restarts; the sessions stay recorded     |
 
 Midnight is a boundary because yesterday's abandoned run is not today's: someone
 who stopped at three and slept starts the morning at nothing, not one short of a
 long break. It is the same time zone the metrics use.
+
+The reset is the user's own boundary, for the run they lost track of — back
+after a long gap, two Pomodoros in, and not the person who did them any more.
+Without it the only ways out were a long break nobody had earned or waiting for
+midnight. It is stored as an instant on the user (`cycle_reset_at`) and joins
+the other two boundaries in the count, so nothing recorded is touched: the
+Pomodoros before it keep their place in the history and the statistics, and only
+stop counting toward the long break. The timer offers it only while nothing is
+running and there is something to let go of, and asks first, saying what stays.
 
 The timer draws one mark per Pomodoro and fills the one being earned as the ring
 fills. The row is scaled to the phase on screen: four marks while the run is
