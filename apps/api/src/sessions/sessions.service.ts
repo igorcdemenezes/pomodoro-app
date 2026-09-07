@@ -118,7 +118,8 @@ export class SessionsService {
    *
    * The run restarts at the last completed long break — which is what a long
    * break is — and again at local midnight, so a cycle abandoned yesterday does
-   * not leave today starting at three.
+   * not leave today starting at three. It also restarts where the user said so
+   * (`resetCycle`): a run they lost track of is theirs to start over.
    *
    * A cancelled session is not a boundary. The Pomodoro it interrupted is void
    * — it earns no place in the run, exactly as it earns no time in the
@@ -145,6 +146,7 @@ export class SessionsService {
             AND s.kind = 'FOCUS'
             AND s.ended_at >= GREATEST(
               date_trunc('day', now() AT TIME ZONE ${timeZone}) AT TIME ZONE ${timeZone},
+              COALESCE(u.cycle_reset_at, '-infinity'::timestamptz),
               COALESCE(
                 (
                   SELECT MAX(l.ended_at)
@@ -169,6 +171,28 @@ export class SessionsService {
       completedInCycle: Number(row.completed_in_cycle),
       cyclesUntilLongBreak: row.cycles_until_long_break,
     };
+  }
+
+  /**
+   * Starts the run over from where the user is now.
+   *
+   * A boundary, not an erasure: the Pomodoros done so far keep their place in
+   * the statistics and in the history, and only stop counting toward the long
+   * break. Recorded as an instant rather than by touching sessions, so a focus
+   * that is running through the reset becomes the first of the new run when it
+   * finishes, and the other device sees the same run on its next fetch.
+   */
+  async resetCycle(userId: string, timeZone: string): Promise<CycleDto> {
+    const updated = await this.prisma.user.updateMany({
+      where: { id: userId },
+      data: { cycleResetAt: new Date() },
+    });
+
+    if (updated.count === 0) {
+      throw new NotFoundException({ code: 'USER_NOT_FOUND', message: 'User not found.' });
+    }
+
+    return this.cycle(userId, timeZone);
   }
 
   async pause(userId: string, id: string): Promise<SessionDto> {
