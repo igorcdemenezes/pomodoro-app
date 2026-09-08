@@ -143,13 +143,6 @@ export function DashboardScreen() {
                   label: 'day streak',
                   emphasis: true,
                 },
-                {
-                  value: `${Math.round((summary.data?.completionRate ?? 0) * 100)}%`,
-                  label: 'completed',
-                  accessibilityLabel: `${Math.round(
-                    (summary.data?.completionRate ?? 0) * 100,
-                  )}% of sessions completed this week`,
-                },
               ]}
             />
           </View>
