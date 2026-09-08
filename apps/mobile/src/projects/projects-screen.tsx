@@ -3,8 +3,6 @@ import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Menu, Snackbar } from 'react-native-paper';
 
-import { formatDuration } from '../stats/duration';
-import { useByProject } from '../stats/use-stats';
 import { color, radius, size } from '../theme/tokens';
 import { RoundButton } from '../ui/button';
 import { Screen } from '../ui/screen';
@@ -30,22 +28,12 @@ export function ProjectsScreen() {
   // One request for both tabs: the split is a property of each project, not a
   // different list, and refetching to flip a filter would blank the screen.
   const projects = useProjects(true);
-  const breakdown = useByProject('week');
   const mutations = useProjectMutations();
 
   // `undefined` keeps the dialog closed; `null` opens it empty; a project opens
   // it for editing.
   const [editing, setEditing] = useState<Project | null | undefined>(undefined);
   const [menuFor, setMenuFor] = useState<string | null>(null);
-
-  const focusByProject = useMemo(
-    () => new Map((breakdown.data ?? []).map((item) => [item.projectId, item.focusedSeconds])),
-    [breakdown.data],
-  );
-  const focusTotal = useMemo(
-    () => (breakdown.data ?? []).reduce((total, item) => total + item.focusedSeconds, 0),
-    [breakdown.data],
-  );
 
   const shown = useMemo(
     () =>
@@ -101,7 +89,7 @@ export function ProjectsScreen() {
         <View style={styles.heading}>
           <Text variant="pageTitle">Projects</Text>
           <Text variant="label" tone="secondary">
-            {activeCount} active · {taskCount} tasks · {formatDuration(focusTotal)} this week
+            {activeCount} active · {taskCount} tasks
           </Text>
         </View>
         <RoundButton
@@ -144,8 +132,10 @@ export function ProjectsScreen() {
           )
         }
         renderItem={({ item }) => {
-          const focused = focusByProject.get(item.id) ?? 0;
-          const share = focusTotal > 0 ? focused / focusTotal : 0;
+          // How far along the project is: tasks done over tasks in it, the
+          // same figure the statistics screen shows for it.
+          const share =
+            item.taskCount > 0 ? (item.taskCount - item.openTaskCount) / item.taskCount : 0;
 
           return (
             <Pressable
@@ -161,7 +151,7 @@ export function ProjectsScreen() {
                     {item.name}
                   </Text>
                   <Text variant="numeralXs" tone="secondary">
-                    {formatDuration(focused)} · {Math.round(share * 100)}%
+                    {Math.round(share * 100)}%
                   </Text>
                   <Menu
                     visible={menuFor === item.id}
@@ -195,7 +185,11 @@ export function ProjectsScreen() {
 
                 <View style={styles.cardFoot}>
                   <View style={styles.meter}>
-                    <Meter fraction={share} color={item.color} />
+                    <Meter
+                      fraction={share}
+                      color={item.color}
+                      label={`${item.name}, ${Math.round(share * 100)}% of tasks done`}
+                    />
                   </View>
                   <Text variant="caption" tone="secondary">
                     {describeCounts(item)}

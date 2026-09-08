@@ -3,20 +3,17 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PaperProvider } from 'react-native-paper';
 
 import { HttpError } from '../api/http-error';
-import * as statsApi from '../stats/stats-api';
 import type { Project } from './project-types';
 import * as projectsApi from './projects-api';
 import { ProjectsScreen } from './projects-screen';
 
 jest.mock('./projects-api');
-jest.mock('../stats/stats-api');
 
 // Prefixed with `mock` so the factory below may close over it.
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 
 const api = jest.mocked(projectsApi);
-const stats = jest.mocked(statsApi);
 
 function project(overrides: Partial<Project> = {}): Project {
   return {
@@ -52,7 +49,6 @@ describe('projects screen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
-    stats.fetchByProject.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -66,6 +62,7 @@ describe('projects screen', () => {
 
     expect(await screen.findByText('Deep Work')).toBeOnTheScreen();
     expect(screen.getByText('5 tasks · 3 done')).toBeOnTheScreen();
+    expect(screen.getByText('60%')).toBeOnTheScreen();
   });
 
   it('invites the first project when there are none', async () => {
