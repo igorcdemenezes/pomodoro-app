@@ -101,19 +101,21 @@ export class StatsService {
    * A point per calendar day, including days with no sessions.
    *
    * generate_series supplies the empty days, so the chart has no holes and the
-   * client never has to invent the gaps.
+   * client never has to invent the gaps. `from` and `to` are calendar days
+   * already in `timeZone`, which only the sessions still need converting into.
    */
-  async daily(userId: string, from: Date, to: Date, timeZone: string): Promise<DailyPointDto[]> {
+  async daily(
+    userId: string,
+    from: string,
+    to: string,
+    timeZone: string,
+  ): Promise<DailyPointDto[]> {
     const rows = await this.prisma.$queryRaw<DailyRow[]>`
       SELECT
         to_char(d.day, 'YYYY-MM-DD') AS day,
         COALESCE(SUM(${FOCUSED_SECONDS}), 0)::float8 AS focused_seconds,
         COUNT(s.id) AS completed_sessions
-      FROM generate_series(
-        (${from} AT TIME ZONE ${timeZone})::date,
-        (${to} AT TIME ZONE ${timeZone})::date,
-        interval '1 day'
-      ) AS d(day)
+      FROM generate_series(${from}::date, ${to}::date, interval '1 day') AS d(day)
       LEFT JOIN pomodoro_sessions s
         ON s.user_id = ${userId}::uuid
        AND s.status = 'COMPLETED'

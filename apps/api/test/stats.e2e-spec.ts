@@ -219,6 +219,29 @@ describe('Stats (e2e)', () => {
       await a().get('/api/v1/stats/daily?from=2026-09-03&to=2026-09-01').expect(400);
       await a().get('/api/v1/stats/daily?from=2000-01-01&to=2026-09-03').expect(400);
     });
+
+    // `2026-09-07` read as an instant is midnight UTC, which is still the 6th
+    // in São Paulo: the series used to end a day early for anyone west of UTC,
+    // and the dashboard's "today" showed yesterday's count.
+    it('keeps today on the series for a zone behind UTC', async () => {
+      await finished({ daysAgo: 0, ranMinutes: 25 });
+      const today = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+
+      const response = await a()
+        .get(`/api/v1/stats/daily?from=${today}&to=${today}&timeZone=America/Sao_Paulo`)
+        .expect(200);
+
+      expect(response.body).toEqual([{ day: today, focusedSeconds: 1500, completedSessions: 1 }]);
+    });
+
+    it('rejects an instant where a calendar day is expected', async () => {
+      await a().get('/api/v1/stats/daily?to=2026-09-03T00:00:00.000Z').expect(400);
+    });
   });
 
   describe('breakdown by project', () => {
