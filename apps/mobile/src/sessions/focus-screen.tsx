@@ -423,12 +423,17 @@ export function FocusScreen() {
                 disabled={controls.pending}
               />
             )}
-            <Control
-              icon="check"
-              label="COMPLETE"
-              onPress={() => end('Session completed.', false, () => controls.complete(session.id))}
-              disabled={controls.pending}
-            />
+            {/* A Pomodoro counts only once it finishes — the server refuses to
+                count it early, and a button it would refuse is not offered. A
+                break is different: cutting a rest short distorts nothing. */}
+            {session.kind === 'FOCUS' ? null : (
+              <Control
+                icon="chevronRight"
+                label="SKIP"
+                onPress={() => end('Break skipped.', false, () => controls.complete(session.id))}
+                disabled={controls.pending}
+              />
+            )}
           </View>
         ) : (
           <View style={styles.controls}>
@@ -641,7 +646,7 @@ function Control({
   primary = false,
   tint,
 }: {
-  icon: 'close' | 'check' | 'pause' | 'play';
+  icon: 'close' | 'check' | 'pause' | 'play' | 'chevronRight';
   label: string;
   onPress: () => void;
   disabled?: boolean;

@@ -89,6 +89,17 @@ async function renderScreen() {
   return { ...view, client, rerender: () => view.rerender(tree()) };
 }
 
+/**
+ * Lets a session's deadline pass. The screen asks for the session again just
+ * past it, and the query — mocked to answer null by then — hands back nothing,
+ * which is how a Pomodoro ends: there is no button for it.
+ */
+async function expire() {
+  await act(async () => {
+    jest.advanceTimersByTime(16 * 60 * 1000);
+  });
+}
+
 describe('focus screen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -131,6 +142,37 @@ describe('focus screen', () => {
       kind: 'FOCUS',
       clientMutationId: 'ffffffff-0000-4000-8000-00000000000f',
     });
+  });
+
+  // The server refuses to count a Pomodoro before its time is up, so the
+  // screen offers nothing it would refuse: a Pomodoro runs out or is cancelled.
+  it('offers no way to finish a Pomodoro by hand', async () => {
+    api.fetchActiveSession.mockResolvedValue(running());
+
+    await renderScreen();
+
+    expect(await screen.findByText('PAUSE')).toBeOnTheScreen();
+    expect(screen.getByText('CANCEL')).toBeOnTheScreen();
+    expect(screen.queryByText('SKIP')).not.toBeOnTheScreen();
+    expect(screen.queryByText('COMPLETE')).not.toBeOnTheScreen();
+  });
+
+  it('lets a break be skipped, counting it as taken', async () => {
+    api.fetchActiveSession
+      .mockResolvedValueOnce(running({ kind: 'SHORT_BREAK', durationSec: 300 }))
+      .mockResolvedValue(null);
+    api.transitionSession.mockResolvedValue(
+      running({ kind: 'SHORT_BREAK', status: 'COMPLETED', dueAt: null, remainingSec: 0 }),
+    );
+
+    await renderScreen();
+
+    await fireEvent.press(await screen.findByText('SKIP'));
+
+    await waitFor(() =>
+      expect(api.transitionSession).toHaveBeenCalledWith(running().id, 'complete'),
+    );
+    expect(await screen.findByText('Break skipped.')).toBeOnTheScreen();
   });
 
   it('shows the time left on a session that was already running', async () => {
@@ -249,14 +291,11 @@ describe('focus screen', () => {
   // the break: a break carries no task, so the history would show it on nothing.
   it('starts a focus on the task it was opened for, even after a Pomodoro', async () => {
     api.fetchActiveSession.mockResolvedValueOnce(running()).mockResolvedValue(null);
-    api.transitionSession.mockResolvedValue(
-      running({ status: 'COMPLETED', dueAt: null, remainingSec: 0, endedAt: NOW }),
-    );
     api.startSession.mockResolvedValue(running({ taskId: TASK_ID }));
 
     const view = await renderScreen();
 
-    await fireEvent.press(await screen.findByText('COMPLETE'));
+    await expire();
 
     expect(await screen.findByLabelText('Up next: Short break')).toBeOnTheScreen();
 
@@ -323,15 +362,12 @@ describe('focus screen', () => {
     api.fetchActiveSession
       .mockResolvedValueOnce(running({ taskId: TASK_ID }))
       .mockResolvedValue(null);
-    api.transitionSession.mockResolvedValue(
-      running({ taskId: TASK_ID, status: 'COMPLETED', dueAt: null, remainingSec: 0, endedAt: NOW }),
-    );
 
     await renderScreen();
 
     expect(await screen.findByText('Write the ADR')).toBeOnTheScreen();
 
-    await fireEvent.press(await screen.findByText('COMPLETE'));
+    await expire();
 
     expect(await screen.findByText('START')).toBeOnTheScreen();
     expect(screen.queryByText('Write the ADR')).not.toBeOnTheScreen();
@@ -436,7 +472,7 @@ describe('focus screen', () => {
 
       expect(await screen.findByText('0 / 1')).toBeOnTheScreen();
 
-      await fireEvent.press(await screen.findByText('COMPLETE'));
+      await fireEvent.press(await screen.findByText('SKIP'));
 
       expect(await screen.findByText('0 / 4')).toBeOnTheScreen();
     });
@@ -455,16 +491,13 @@ describe('focus screen', () => {
 
     it('asks where the run stands again once a session has ended', async () => {
       api.fetchActiveSession.mockResolvedValueOnce(running()).mockResolvedValue(null);
-      api.transitionSession.mockResolvedValue(
-        running({ status: 'COMPLETED', dueAt: null, remainingSec: 0, endedAt: NOW }),
-      );
       api.fetchCycle
         .mockResolvedValueOnce({ completedInCycle: 2, cyclesUntilLongBreak: 4 })
         .mockResolvedValue({ completedInCycle: 3, cyclesUntilLongBreak: 4 });
 
       await renderScreen();
 
-      await fireEvent.press(await screen.findByText('COMPLETE'));
+      await expire();
 
       expect(await screen.findByText('3 / 4')).toBeOnTheScreen();
     });
@@ -474,17 +507,18 @@ describe('focus screen', () => {
     // numbers until the app was reopened.
     it('marks the figures counted from sessions stale once one has ended', async () => {
       api.fetchActiveSession.mockResolvedValueOnce(running()).mockResolvedValue(null);
-      api.transitionSession.mockResolvedValue(
-        running({ status: 'COMPLETED', dueAt: null, remainingSec: 0, endedAt: NOW }),
-      );
 
       const { client } = await renderScreen();
       const summaryKey = ['stats', 'summary', 'week'];
       const historyKey = ['sessions', 'history', 'week'];
+      // Nothing observes these entries here, and the deadline is minutes away:
+      // without this they would be garbage-collected before it passes.
+      client.setQueryDefaults(summaryKey, { gcTime: Infinity });
+      client.setQueryDefaults(historyKey, { gcTime: Infinity });
       client.setQueryData(summaryKey, { completedSessions: 2 });
       client.setQueryData(historyKey, { pages: [], pageParams: [] });
 
-      await fireEvent.press(await screen.findByText('COMPLETE'));
+      await expire();
 
       await waitFor(() => expect(client.getQueryState(summaryKey)?.isInvalidated).toBe(true));
       expect(client.getQueryState(historyKey)?.isInvalidated).toBe(true);
@@ -567,7 +601,7 @@ describe('focus screen', () => {
       api.resetCycle.mockResolvedValue({ completedInCycle: 0, cyclesUntilLongBreak: 4 });
 
       await renderScreen();
-      await fireEvent.press(await screen.findByText('COMPLETE'));
+      await fireEvent.press(await screen.findByText('SKIP'));
 
       expect(await screen.findByLabelText('Up next: Long break')).toBeOnTheScreen();
 
@@ -692,13 +726,18 @@ describe('focus screen', () => {
       );
       api.startSession.mockResolvedValue(running());
     };
+    // A Pomodoro runs its course; a break can be cut short.
+    const finish = async (kind: 'FOCUS' | 'SHORT_BREAK' | 'LONG_BREAK') => {
+      if (kind === 'FOCUS') await expire();
+      else await fireEvent.press(await screen.findByText('SKIP'));
+    };
 
     it('offers the short break a finished Pomodoro earned', async () => {
       api.fetchCycle.mockResolvedValue({ completedInCycle: 1, cyclesUntilLongBreak: 4 });
       ended('FOCUS');
 
       await renderScreen();
-      await fireEvent.press(await screen.findByText('COMPLETE'));
+      await finish('FOCUS');
       await fireEvent.press(await screen.findByText('START'));
 
       await waitFor(() => expect(api.startSession).toHaveBeenCalled());
@@ -712,7 +751,7 @@ describe('focus screen', () => {
       ended('FOCUS');
 
       await renderScreen();
-      await fireEvent.press(await screen.findByText('COMPLETE'));
+      await finish('FOCUS');
       await fireEvent.press(await screen.findByText('START'));
 
       await waitFor(() => expect(api.startSession).toHaveBeenCalled());
@@ -724,7 +763,7 @@ describe('focus screen', () => {
       ended('SHORT_BREAK');
 
       await renderScreen();
-      await fireEvent.press(await screen.findByText('COMPLETE'));
+      await finish('SHORT_BREAK');
       await fireEvent.press(await screen.findByText('START'));
 
       await waitFor(() => expect(api.startSession).toHaveBeenCalled());
@@ -736,7 +775,7 @@ describe('focus screen', () => {
       ended('SHORT_BREAK');
 
       await renderScreen();
-      await fireEvent.press(await screen.findByText('COMPLETE'));
+      await finish('SHORT_BREAK');
       await fireEvent.press(await screen.findByText('START'));
 
       await waitFor(() => expect(api.startSession).toHaveBeenCalled());
