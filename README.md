@@ -308,8 +308,10 @@ worth, and time spent paused is not counted as focus.
 
 **Days belong to a time zone.** `?timeZone=America/Sao_Paulo` decides which
 calendar day a session falls on; without it a 22:00 session would land on the
-following day. The daily series fills empty days with zeros through
-`generate_series`, so a chart has no holes.
+following day. The daily series takes `from` and `to` as calendar days in that
+zone, never as instants — `2026-09-07` parsed as a `Date` is midnight UTC, which
+is still the 6th in São Paulo and would drop today from the chart. Empty days
+are filled with zeros through `generate_series`, so a chart has no holes.
 
 The streak query groups days by the gap between the date and its row number,
 which is constant inside a run of consecutive days — so "days in a row ending
