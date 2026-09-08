@@ -21,7 +21,7 @@ export function StatisticsScreen() {
   const summary = useSummary(range);
   const daily = useDaily(range);
   const previous = usePreviousDaily(range);
-  const byProject = useByProject(range);
+  const byProject = useByProject();
 
   const queries = [summary, daily, byProject];
 
@@ -143,7 +143,7 @@ export function StatisticsScreen() {
             <ProjectBars items={byProject.data} />
           ) : (
             <Text variant="body" tone="secondary">
-              Link a session to a task to see where the time went.
+              Add tasks to a project to see how far along it is.
             </Text>
           )}
         </>

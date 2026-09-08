@@ -33,11 +33,12 @@ export interface DailyPoint {
   completedSessions: number;
 }
 
+/** How far along a project is: tasks done over tasks in it. Not tied to a range. */
 export interface ProjectBreakdown {
-  /** Null for the bucket holding sessions filed under no project. */
-  projectId: string | null;
+  projectId: string;
   projectName: string;
   color: string;
-  focusedSeconds: number;
-  completedSessions: number;
+  taskCount: number;
+  completedTaskCount: number;
+  completionRate: number;
 }

@@ -37,15 +37,17 @@ const BY_PROJECT: ProjectBreakdown[] = [
     projectId: 'p1000000-0000-4000-8000-000000000001',
     projectName: 'Deep Work',
     color: '#2A78D6',
-    focusedSeconds: 5100,
-    completedSessions: 3,
+    taskCount: 4,
+    completedTaskCount: 2,
+    completionRate: 0.5,
   },
   {
-    projectId: null,
-    projectName: 'No project',
-    color: '#2A78D6',
-    focusedSeconds: 1500,
-    completedSessions: 1,
+    projectId: 'p1000000-0000-4000-8000-000000000002',
+    projectName: 'Studies',
+    color: '#CC7A1A',
+    taskCount: 1,
+    completedTaskCount: 0,
+    completionRate: 0,
   },
 ];
 
@@ -115,11 +117,16 @@ describe('statistics screen', () => {
     expect(screen.getByText('50m')).toBeOnTheScreen();
   });
 
-  it('names every project in the breakdown, so colour is never the only clue', async () => {
+  it('says how far along each project is, by name', async () => {
     await renderScreen();
 
     expect(await screen.findByText('Deep Work')).toBeOnTheScreen();
-    expect(screen.getByText('No project')).toBeOnTheScreen();
+    expect(screen.getByText('2 of 4 tasks · 50%')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Deep Work, 50% of tasks done')).toHaveAccessibilityValue({
+      now: 50,
+    });
+    expect(screen.getByText('Studies')).toBeOnTheScreen();
+    expect(screen.getByText('0 of 1 task · 0%')).toBeOnTheScreen();
   });
 
   it('asks the server again when the range changes', async () => {
@@ -130,7 +137,8 @@ describe('statistics screen', () => {
     await fireEvent.press(await screen.findByText('Month'));
 
     await waitFor(() => expect(api.fetchSummary).toHaveBeenCalledWith('month'));
-    expect(api.fetchByProject).toHaveBeenCalledWith('month');
+    // Project progress is a state, not a window: one call, whatever the range.
+    expect(api.fetchByProject).toHaveBeenCalledTimes(1);
   });
 
   it('invites a first session instead of drawing empty charts', async () => {
