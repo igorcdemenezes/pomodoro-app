@@ -237,6 +237,14 @@ correctly.
 An invalid transition answers **409** with the current status attached, so the
 client reconciles instead of retrying blindly.
 
+A focus session reaches `COMPLETED` only when its deadline passes: `complete`
+answers **409** `POMODORO_NOT_DUE` before that, and the timer offers no button
+for it. A Pomodoro counts only once it finishes — accepting it early would
+record a session done in status and empty in time, and the session count and
+the focused time would stop agreeing. To stop early, cancel. Breaks are
+different: cutting a rest short distorts nothing, so the timer lets them be
+skipped.
+
 Three independent mechanisms keep "one session at a time" true:
 
 1. `clientMutationId` makes a retried start after a dropped connection resolve
@@ -424,6 +432,8 @@ The cases that justify the integration tier:
 5. A session whose deadline passed is materialised as `COMPLETED` on the next
    read, with `endedAt` derived rather than set to the time of the read.
 6. An invalid transition — resuming a completed session — is rejected with 409.
+7. Completing a focus session before its deadline is rejected with 409, while
+   a break can be skipped at any point.
 
 Every push and pull request runs the same thing in CI (`.github/workflows`):
 formatting, lint, type-check and both suites, with PostgreSQL as a service
