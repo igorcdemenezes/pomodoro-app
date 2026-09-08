@@ -195,8 +195,9 @@ describe('Pomodoro sessions (e2e)', () => {
       expect(stored.pausedAccumulatedMs).toBeGreaterThanOrEqual(0);
     });
 
-    it('completes a session and frees the slot', async () => {
-      const { body: started } = await startFocus().expect(201);
+    it('completes a focus session once its time is up, freeing the slot', async () => {
+      const { body: started } = await startFocus(alice, { durationSec: 600 }).expect(201);
+      await ageSession(started.id, 10);
 
       const completed = await a().patch(`/api/v1/sessions/${started.id}/complete`).expect(200);
       expect(completed.body.status).toBe('COMPLETED');
@@ -204,6 +205,40 @@ describe('Pomodoro sessions (e2e)', () => {
 
       await a().get('/api/v1/sessions/active').expect(204);
       await startFocus().expect(201);
+    });
+
+    // A Pomodoro counts only once it finishes. Accepting it early would record
+    // a session done in status and empty in time, and the session count and
+    // the focused time would stop agreeing.
+    it('refuses to complete a focus session before its deadline', async () => {
+      const { body: started } = await startFocus().expect(201);
+
+      const response = await a().patch(`/api/v1/sessions/${started.id}/complete`).expect(409);
+
+      expect(response.body).toMatchObject({
+        code: 'POMODORO_NOT_DUE',
+        details: { sessionId: started.id },
+      });
+      expect(response.body.details.remainingSec).toBeGreaterThan(0);
+
+      const active = await a().get('/api/v1/sessions/active').expect(200);
+      expect(active.body.status).toBe('RUNNING');
+    });
+
+    it('refuses to complete a paused focus session early too', async () => {
+      const { body: started } = await startFocus().expect(201);
+      await a().patch(`/api/v1/sessions/${started.id}/pause`).expect(200);
+
+      await a().patch(`/api/v1/sessions/${started.id}/complete`).expect(409);
+    });
+
+    it('lets a break be skipped at any point', async () => {
+      const { body: started } = await startFocus(alice, { kind: 'SHORT_BREAK' }).expect(201);
+
+      const skipped = await a().patch(`/api/v1/sessions/${started.id}/complete`).expect(200);
+
+      expect(skipped.body.status).toBe('COMPLETED');
+      await a().get('/api/v1/sessions/active').expect(204);
     });
 
     it('cancels a session', async () => {
@@ -227,14 +262,14 @@ describe('Pomodoro sessions (e2e)', () => {
     });
 
     it('refuses to pause a completed session', async () => {
-      const { body: started } = await startFocus().expect(201);
+      const { body: started } = await startFocus(alice, { kind: 'SHORT_BREAK' }).expect(201);
       await a().patch(`/api/v1/sessions/${started.id}/complete`).expect(200);
 
       await a().patch(`/api/v1/sessions/${started.id}/pause`).expect(409);
     });
 
     it('refuses to complete an already completed session', async () => {
-      const { body: started } = await startFocus().expect(201);
+      const { body: started } = await startFocus(alice, { kind: 'SHORT_BREAK' }).expect(201);
       await a().patch(`/api/v1/sessions/${started.id}/complete`).expect(200);
 
       await a().patch(`/api/v1/sessions/${started.id}/complete`).expect(409);
@@ -343,7 +378,8 @@ describe('Pomodoro sessions (e2e)', () => {
     });
 
     it('counts a focus session as soon as it is completed', async () => {
-      const { body: started } = await startFocus().expect(201);
+      const { body: started } = await startFocus(alice, { durationSec: 600 }).expect(201);
+      await ageSession(started.id, 10);
       await a().patch(`/api/v1/sessions/${started.id}/complete`).expect(200);
 
       const response = await cycleOf(midday().zone).expect(200);
@@ -476,7 +512,8 @@ describe('Pomodoro sessions (e2e)', () => {
         await seedFinished('FOCUS', 120);
         await reset(midday().zone).expect(200);
 
-        const { body: session } = await startFocus().expect(201);
+        const { body: session } = await startFocus(alice, { durationSec: 600 }).expect(201);
+        await ageSession(session.id, 10);
         await a().patch(`/api/v1/sessions/${session.id}/complete`).expect(200);
 
         const response = await cycleOf(midday().zone).expect(200);

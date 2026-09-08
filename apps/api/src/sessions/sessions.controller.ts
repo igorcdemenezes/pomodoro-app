@@ -158,9 +158,13 @@ export class SessionsController {
 
   @Patch(':id/complete')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Finish a session early, counting it as done' })
+  @ApiOperation({
+    summary: 'Count a session as done',
+    description:
+      'A break can be skipped at any point. A focus session is accepted only once its deadline has passed; before that, cancel it instead.',
+  })
   @ApiOkResponse({ type: SessionDto })
-  @ApiConflictResponse({ description: 'INVALID_SESSION_TRANSITION' })
+  @ApiConflictResponse({ description: 'INVALID_SESSION_TRANSITION or POMODORO_NOT_DUE' })
   complete(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,

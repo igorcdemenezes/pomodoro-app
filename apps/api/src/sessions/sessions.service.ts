@@ -8,7 +8,7 @@ import type { SessionDto } from './dto/session.dto';
 import type { SessionPageDto } from './dto/session-page.dto';
 import type { StartSessionDto } from './dto/start-session.dto';
 import { toSessionDto } from './session.mapper';
-import { hasExpired, pauseAccumulationOnResume } from './session-timing';
+import { hasExpired, pauseAccumulationOnResume, remainingMs } from './session-timing';
 
 const ACTIVE_STATUSES = [SessionStatus.RUNNING, SessionStatus.PAUSED];
 
@@ -229,6 +229,12 @@ export class SessionsService {
     );
   }
 
+  /**
+   * A Pomodoro counts only once it finishes: completing one by hand before its
+   * deadline would record a session that is "done" in status and empty in
+   * time, and every figure counted from either would disagree with the other.
+   * Breaks may be skipped — cutting a rest short distorts nothing.
+   */
   async finish(userId: string, id: string, status: SessionStatus): Promise<SessionDto> {
     const now = new Date();
     const session = await this.requireOwned(userId, id);
@@ -238,6 +244,21 @@ export class SessionsService {
       ACTIVE_STATUSES,
       status === SessionStatus.COMPLETED ? 'complete' : 'cancel',
     );
+
+    if (
+      status === SessionStatus.COMPLETED &&
+      session.kind === SessionKind.FOCUS &&
+      !hasExpired(session, now)
+    ) {
+      throw new ConflictException({
+        code: 'POMODORO_NOT_DUE',
+        message: 'A focus session counts only once its time is up. Cancel it to stop early.',
+        details: {
+          sessionId: session.id,
+          remainingSec: Math.ceil(remainingMs(session, now) / 1000),
+        },
+      });
+    }
 
     return this.applyUpdate(id, { status, pausedAt: null, endedAt: now }, now);
   }
