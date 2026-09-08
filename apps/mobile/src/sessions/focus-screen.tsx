@@ -357,8 +357,7 @@ export function FocusScreen() {
                 {chosen.title}
               </Text>
               <Text variant="label" tone="secondary">
-                {chosenProject?.name ?? 'No project'} · {chosen.completedPomodoros} of{' '}
-                {chosen.estimatedPomodoros}
+                {chosenProject?.name ?? 'No project'}
               </Text>
             </View>
             {/* Once a session is running the task is part of what the server

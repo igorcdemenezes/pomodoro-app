@@ -71,7 +71,7 @@ export function TaskRow({
         <View style={styles.meta}>
           {onToggleDone ? <Dot color={projectColor} size={6} /> : null}
           <Text variant="label" tone="secondary" numberOfLines={1} style={styles.metaText}>
-            {subtitle ?? describe(task, projectName)}
+            {subtitle ?? projectName ?? 'No project'}
           </Text>
         </View>
       </View>
@@ -118,12 +118,6 @@ function Checkbox({
       {checked ? <Icon name="check" size={14} color={color.onAccent} strokeWidth={3.2} /> : null}
     </Pressable>
   );
-}
-
-function describe(task: Task, projectName?: string): string {
-  const pomodoros = `${task.completedPomodoros} of ${task.estimatedPomodoros}`;
-
-  return `${projectName ?? 'No project'} · ${pomodoros}`;
 }
 
 const styles = StyleSheet.create({
