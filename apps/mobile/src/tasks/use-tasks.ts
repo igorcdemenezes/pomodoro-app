@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { HttpError } from '../api/http-error';
 import { projectsKey } from '../projects/use-projects';
+import { statsKey } from '../stats/use-stats';
 import type { CreateTaskInput, Task, UpdateTaskInput } from './task-types';
 import { createTask, deleteTask, fetchTasks, updateTask } from './tasks-api';
 import type { TaskFilter } from './tasks-api';
@@ -22,9 +23,9 @@ export function useTasks(filter: TaskFilter) {
 /**
  * Create, restatus and delete.
  *
- * Every one of these moves a project's open-task count, so the project list is
- * invalidated alongside the task list — otherwise going back would show counts
- * that disagree with the tasks just edited.
+ * Every one of these moves a project's open-task count and its completion in
+ * the statistics, so both are invalidated alongside the task list — otherwise
+ * going back would show counts that disagree with the tasks just edited.
  */
 export function useTaskMutations() {
   const client = useQueryClient();
@@ -33,6 +34,7 @@ export function useTaskMutations() {
     await Promise.all([
       client.invalidateQueries({ queryKey: tasksKey }),
       client.invalidateQueries({ queryKey: projectsKey }),
+      client.invalidateQueries({ queryKey: statsKey }),
     ]);
   };
 
