@@ -37,10 +37,11 @@ function useDailyWindow({ from, to }: { from: string; to: string }) {
   });
 }
 
-export function useByProject(range: StatsRange) {
+/** Project progress is a state, not a window, so it ignores the range. */
+export function useByProject() {
   return useQuery<ProjectBreakdown[]>({
-    queryKey: [...statsKey, 'by-project', range],
-    queryFn: () => fetchByProject(range),
+    queryKey: [...statsKey, 'by-project'],
+    queryFn: fetchByProject,
   });
 }
 

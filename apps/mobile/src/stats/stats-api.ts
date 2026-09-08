@@ -14,6 +14,6 @@ export function fetchDaily(from: string, to: string): Promise<DailyPoint[]> {
   return authenticatedRequest<DailyPoint[]>(`/stats/daily?${query}`);
 }
 
-export function fetchByProject(range: StatsRange): Promise<ProjectBreakdown[]> {
-  return authenticatedRequest<ProjectBreakdown[]>(`/stats/by-project?range=${range}`);
+export function fetchByProject(): Promise<ProjectBreakdown[]> {
+  return authenticatedRequest<ProjectBreakdown[]>('/stats/by-project');
 }
