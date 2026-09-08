@@ -41,11 +41,11 @@ interface DailyRow {
 }
 
 interface BreakdownRow {
-  project_id: string | null;
-  project_name: string | null;
-  color: string | null;
-  focused_seconds: number;
-  completed_sessions: bigint;
+  project_id: string;
+  project_name: string;
+  color: string;
+  task_count: bigint;
+  completed_task_count: bigint;
 }
 
 interface StreakRow {
@@ -132,36 +132,42 @@ export class StatsService {
     }));
   }
 
-  /** Focused time per project, with unfiled sessions kept as their own bucket. */
-  async byProject(userId: string, range: StatsRange): Promise<ProjectBreakdownDto[]> {
-    // No time zone here: the breakdown groups by project, not by calendar day.
-    const since = this.rangeStart(range);
-
+  /**
+   * How far along each project is: tasks done over tasks in it.
+   *
+   * This is the project's state today, not a reading over a window, so there is
+   * no range. Archived projects and projects with no tasks are left out — the
+   * first are gone from the user's view, the second have no fraction to show.
+   */
+  async byProject(userId: string): Promise<ProjectBreakdownDto[]> {
     const rows = await this.prisma.$queryRaw<BreakdownRow[]>`
       SELECT
         p.id AS project_id,
         p.name AS project_name,
         p.color AS color,
-        COALESCE(SUM(${FOCUSED_SECONDS}), 0)::float8 AS focused_seconds,
-        COUNT(s.id) AS completed_sessions
-      FROM pomodoro_sessions s
-      LEFT JOIN tasks t ON t.id = s.task_id
-      LEFT JOIN projects p ON p.id = t.project_id
-      WHERE s.user_id = ${userId}::uuid
-        AND s.status = 'COMPLETED'
-        AND s.kind = 'FOCUS'
-        ${since ? Prisma.sql`AND s.started_at >= ${since}` : Prisma.empty}
+        COUNT(t.id) AS task_count,
+        COUNT(t.id) FILTER (WHERE t.status = 'DONE') AS completed_task_count
+      FROM projects p
+      JOIN tasks t ON t.project_id = p.id
+      WHERE p.user_id = ${userId}::uuid
+        AND p.archived_at IS NULL
       GROUP BY p.id, p.name, p.color
-      ORDER BY focused_seconds DESC
+      ORDER BY (COUNT(t.id) FILTER (WHERE t.status = 'DONE'))::float8 / COUNT(t.id) DESC, p.name ASC
     `;
 
-    return rows.map((row) => ({
-      projectId: row.project_id,
-      projectName: row.project_name ?? 'No project',
-      color: row.color ?? '#8B8D98',
-      focusedSeconds: Math.round(row.focused_seconds),
-      completedSessions: Number(row.completed_sessions),
-    }));
+    return rows.map((row) => {
+      const taskCount = Number(row.task_count);
+      const completedTaskCount = Number(row.completed_task_count);
+
+      return {
+        projectId: row.project_id,
+        projectName: row.project_name,
+        color: row.color,
+        taskCount,
+        completedTaskCount,
+        completionRate: Number((completedTaskCount / taskCount).toFixed(4)),
+      };
+    });
   }
 
   /**

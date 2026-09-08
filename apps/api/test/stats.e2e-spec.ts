@@ -245,54 +245,68 @@ describe('Stats (e2e)', () => {
   });
 
   describe('breakdown by project', () => {
-    it('groups focused time by project and keeps unfiled sessions separate', async () => {
-      const { body: project } = await a()
-        .post('/api/v1/projects')
-        .send({ name: 'Deep Work', color: '#123456' })
-        .expect(201);
-      const { body: task } = await a()
-        .post('/api/v1/tasks')
-        .send({ title: 'Filed', projectId: project.id })
-        .expect(201);
+    const project = async (name: string) => {
+      const { body } = await a().post('/api/v1/projects').send({ name, color: '#123456' });
 
-      await finished({ daysAgo: 1, ranMinutes: 25, taskId: task.id });
-      await finished({ daysAgo: 1, ranMinutes: 10 });
+      return body as { id: string };
+    };
+
+    const task = async (projectId: string, status: 'TODO' | 'DONE' = 'TODO') => {
+      await a().post('/api/v1/tasks').send({ title: status, projectId, status }).expect(201);
+    };
+
+    it('reports tasks done over tasks in each project', async () => {
+      const deepWork = await project('Deep Work');
+      await task(deepWork.id, 'DONE');
+      await task(deepWork.id, 'DONE');
+      await task(deepWork.id);
+      await task(deepWork.id);
+
+      const response = await a().get('/api/v1/stats/by-project').expect(200);
+
+      expect(response.body).toEqual([
+        {
+          projectId: deepWork.id,
+          projectName: 'Deep Work',
+          color: '#123456',
+          taskCount: 4,
+          completedTaskCount: 2,
+          completionRate: 0.5,
+        },
+      ]);
+    });
+
+    it('ranks the furthest along first', async () => {
+      const behind = await project('Behind');
+      await task(behind.id);
+      const ahead = await project('Ahead');
+      await task(ahead.id, 'DONE');
 
       const response = await a().get('/api/v1/stats/by-project').expect(200);
 
-      expect(response.body).toHaveLength(2);
-      expect(response.body[0]).toMatchObject({
-        projectId: project.id,
-        projectName: 'Deep Work',
-        color: '#123456',
-        focusedSeconds: 1500,
-        completedSessions: 1,
-      });
-      expect(response.body[1]).toMatchObject({
-        projectId: null,
-        projectName: 'No project',
-        focusedSeconds: 600,
-      });
+      expect(response.body.map((row: { projectName: string }) => row.projectName)).toEqual([
+        'Ahead',
+        'Behind',
+      ]);
     });
 
-    it('keeps history after the project is archived', async () => {
-      const { body: project } = await a()
-        .post('/api/v1/projects')
-        .send({ name: 'Archived' })
-        .expect(201);
-      const { body: task } = await a()
-        .post('/api/v1/tasks')
-        .send({ title: 'Filed', projectId: project.id })
-        .expect(201);
-      await finished({ daysAgo: 1, ranMinutes: 25, taskId: task.id });
-
-      await a().delete(`/api/v1/projects/${project.id}`).expect(200);
+    it('leaves out archived projects and projects with no tasks', async () => {
+      await project('Empty');
+      const archived = await project('Archived');
+      await task(archived.id, 'DONE');
+      await a().delete(`/api/v1/projects/${archived.id}`).expect(200);
+      // A task filed under no project belongs to no row either.
+      await a().post('/api/v1/tasks').send({ title: 'Unfiled' }).expect(201);
 
       const response = await a().get('/api/v1/stats/by-project').expect(200);
-      expect(response.body[0]).toMatchObject({ projectName: 'Archived', focusedSeconds: 1500 });
+
+      expect(response.body).toEqual([]);
     });
 
-    it('is empty for a new account', async () => {
+    it('never mixes in another user projects', async () => {
+      const { body: theirs } = await b().post('/api/v1/projects').send({ name: 'Theirs' });
+      await b().post('/api/v1/tasks').send({ title: 'x', projectId: theirs.id }).expect(201);
+
       const response = await a().get('/api/v1/stats/by-project').expect(200);
 
       expect(response.body).toEqual([]);
