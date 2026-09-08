@@ -42,10 +42,13 @@ export class StatsController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: DailyQueryDto,
   ): Promise<DailyPointDto[]> {
-    const to = query.to ? new Date(query.to) : new Date();
-    const from = query.from ? new Date(query.from) : new Date(to.getTime() - 13 * DAY_MS);
+    // Both bounds are calendar days in the caller's zone, so they never pass
+    // through a `Date`: an instant has no idea which day it is until told
+    // where, and the wrong answer here loses today for everyone west of UTC.
+    const to = query.to ?? calendarDay(new Date(), query.timeZone);
+    const from = query.from ?? daysBefore(to, 13);
 
-    if (from.getTime() > to.getTime()) {
+    if (from > to) {
       throw new BadRequestException({
         code: 'INVALID_RANGE',
         message: '`from` must not be after `to`.',
@@ -54,7 +57,7 @@ export class StatsController {
 
     // A bounded span keeps one request from asking the database to generate an
     // unbounded series.
-    if (to.getTime() - from.getTime() > MAX_DAILY_SPAN_DAYS * DAY_MS) {
+    if (dayMs(to) - dayMs(from) > MAX_DAILY_SPAN_DAYS * DAY_MS) {
       throw new BadRequestException({
         code: 'RANGE_TOO_WIDE',
         message: `The range must not exceed ${MAX_DAILY_SPAN_DAYS} days.`,
@@ -76,4 +79,24 @@ export class StatsController {
   ): Promise<ProjectBreakdownDto[]> {
     return this.stats.byProject(user.id, query.range);
   }
+}
+
+/** The calendar day an instant falls on in `timeZone`, as YYYY-MM-DD. */
+function calendarDay(instant: Date, timeZone: string): string {
+  // en-CA is the locale whose short date is already ISO order.
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(instant);
+}
+
+/** Calendar arithmetic on the day alone; midnight UTC is only a scratch instant. */
+function dayMs(day: string): number {
+  return Date.parse(`${day}T00:00:00Z`);
+}
+
+function daysBefore(day: string, days: number): string {
+  return new Date(dayMs(day) - days * DAY_MS).toISOString().slice(0, 10);
 }
