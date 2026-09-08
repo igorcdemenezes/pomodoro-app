@@ -1,8 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class ProjectBreakdownDto {
-  @ApiProperty({ format: 'uuid', nullable: true, description: 'Null for sessions with no project' })
-  projectId!: string | null;
+  @ApiProperty({ format: 'uuid' })
+  projectId!: string;
 
   @ApiProperty({ example: 'Deep Work' })
   projectName!: string;
@@ -10,9 +10,12 @@ export class ProjectBreakdownDto {
   @ApiProperty({ example: '#6E56CF' })
   color!: string;
 
-  @ApiProperty({ example: 5400 })
-  focusedSeconds!: number;
+  @ApiProperty({ example: 4, description: 'Tasks in the project, done or not' })
+  taskCount!: number;
 
-  @ApiProperty({ example: 4 })
-  completedSessions!: number;
+  @ApiProperty({ example: 2, description: 'Tasks in the project marked done' })
+  completedTaskCount!: number;
+
+  @ApiProperty({ example: 0.5, description: 'Done over total tasks' })
+  completionRate!: number;
 }

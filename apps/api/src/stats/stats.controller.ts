@@ -69,15 +69,13 @@ export class StatsController {
 
   @Get('by-project')
   @ApiOperation({
-    summary: 'Focused time per project',
-    description: 'Sessions with no project are returned as their own bucket.',
+    summary: 'Task completion per project',
+    description:
+      'Tasks done over tasks in each active project, as it stands today; no range applies.',
   })
   @ApiOkResponse({ type: [ProjectBreakdownDto] })
-  byProject(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query() query: StatsQueryDto,
-  ): Promise<ProjectBreakdownDto[]> {
-    return this.stats.byProject(user.id, query.range);
+  byProject(@CurrentUser() user: AuthenticatedUser): Promise<ProjectBreakdownDto[]> {
+    return this.stats.byProject(user.id);
   }
 }
 

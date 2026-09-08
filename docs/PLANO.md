@@ -263,7 +263,7 @@ Documentação viva em `/api/docs` (Swagger UI, gerado do código).
 | ------ | --------------------------- | ------------------------------------------------------------------------ |
 | `GET`  | `/stats/summary?range=week` | Total de foco, sessões concluídas, taxa de conclusão, sequência de dias. |
 | `GET`  | `/stats/daily?from&to`      | Série diária de minutos focados (gráfico).                               |
-| `GET`  | `/stats/by-project?range`   | Distribuição de foco por projeto.                                        |
+| `GET`  | `/stats/by-project`         | Conclusão de tarefas por projeto (feitas / total).                       |
 
 Todas as agregações são feitas em SQL (`GROUP BY date_trunc(...)`) — o app nunca
 soma sessões para produzir estatística.
