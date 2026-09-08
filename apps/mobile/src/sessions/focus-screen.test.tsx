@@ -86,7 +86,7 @@ async function renderScreen() {
   // The route is read on every render, so a test that moves the params — a
   // task's play button pressed while this tab is already mounted — re-renders
   // the tree to deliver them, the way navigation would.
-  return { ...view, rerender: () => view.rerender(tree()) };
+  return { ...view, client, rerender: () => view.rerender(tree()) };
 }
 
 describe('focus screen', () => {
@@ -467,6 +467,29 @@ describe('focus screen', () => {
       await fireEvent.press(await screen.findByText('COMPLETE'));
 
       expect(await screen.findByText('3 / 4')).toBeOnTheScreen();
+    });
+
+    // The tabs stay mounted, so a figure counted from finished sessions has
+    // no other reason to be fetched again: the dashboard kept yesterday's
+    // numbers until the app was reopened.
+    it('marks the figures counted from sessions stale once one has ended', async () => {
+      api.fetchActiveSession.mockResolvedValueOnce(running()).mockResolvedValue(null);
+      api.transitionSession.mockResolvedValue(
+        running({ status: 'COMPLETED', dueAt: null, remainingSec: 0, endedAt: NOW }),
+      );
+
+      const { client } = await renderScreen();
+      const summaryKey = ['stats', 'summary', 'week'];
+      const historyKey = ['sessions', 'history', 'week'];
+      client.setQueryData(summaryKey, { completedSessions: 2 });
+      client.setQueryData(historyKey, { pages: [], pageParams: [] });
+
+      await fireEvent.press(await screen.findByText('COMPLETE'));
+
+      await waitFor(() => expect(client.getQueryState(summaryKey)?.isInvalidated).toBe(true));
+      expect(client.getQueryState(historyKey)?.isInvalidated).toBe(true);
+      // The task's Pomodoro count moved too; the list is fetched again.
+      await waitFor(() => expect(tasks.fetchTasks).toHaveBeenCalledTimes(2));
     });
   });
   // The run is counted from what is recorded, so a user who lost track of it

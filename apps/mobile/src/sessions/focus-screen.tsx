@@ -7,8 +7,10 @@ import { Dialog, Portal, Snackbar } from 'react-native-paper';
 
 import { serverNow } from '../api/server-clock';
 import { useAuthStore } from '../auth/auth-store';
+import { historyKey } from '../history/use-history';
 import { useProjects } from '../projects/use-projects';
-import { useTasks } from '../tasks/use-tasks';
+import { statsKey } from '../stats/use-stats';
+import { tasksKey, useTasks } from '../tasks/use-tasks';
 import { color, radius, sessionColor, size } from '../theme/tokens';
 import { Button } from '../ui/button';
 import { Icon } from '../ui/icon';
@@ -179,6 +181,12 @@ export function FocusScreen() {
       // settled it once the deadline passed — so the row is asked for again,
       // and the screen moves on to whatever the method says comes next.
       void client.invalidateQueries({ queryKey: cycleKey });
+      // So does everything counted from finished sessions. The tabs stay
+      // mounted, so nothing else would ask again: the dashboard kept showing
+      // the figures from before the Pomodoro until the app was reopened.
+      void client.invalidateQueries({ queryKey: statsKey });
+      void client.invalidateQueries({ queryKey: historyKey });
+      void client.invalidateQueries({ queryKey: tasksKey });
       setKind(nextKind(ran.current, intent.current?.cancelled ?? false, done, cycles));
       ran.current = null;
     }
