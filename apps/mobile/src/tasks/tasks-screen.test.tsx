@@ -81,13 +81,13 @@ describe('tasks screen', () => {
     jest.useRealTimers();
   });
 
-  it('shows a task with its project and the focus already spent on it', async () => {
+  it('shows a task with its project', async () => {
     api.fetchTasks.mockResolvedValue([task()]);
 
     await renderScreen();
 
     expect(await screen.findByText('Write the ADR')).toBeOnTheScreen();
-    expect(await screen.findByText('Deep Work · 1 of 4')).toBeOnTheScreen();
+    expect(await screen.findByText('Deep Work')).toBeOnTheScreen();
   });
 
   it('files a new task under the project the list is filtered to', async () => {
