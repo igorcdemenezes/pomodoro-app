@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { HttpError } from '../api/http-error';
+import { statsKey } from '../stats/use-stats';
 import type { CreateProjectInput, Project, UpdateProjectInput } from './project-types';
 import { createProject, fetchProjects, updateProject } from './projects-api';
 
@@ -27,7 +28,13 @@ export function useProjects(includeArchived: boolean) {
 export function useProjectMutations() {
   const client = useQueryClient();
 
-  const refresh = () => client.invalidateQueries({ queryKey: projectsKey });
+  // Archiving, restoring or renaming a project changes the statistics'
+  // breakdown as well as the list.
+  const refresh = () =>
+    Promise.all([
+      client.invalidateQueries({ queryKey: projectsKey }),
+      client.invalidateQueries({ queryKey: statsKey }),
+    ]);
 
   const create = useMutation({
     mutationFn: (input: CreateProjectInput) => createProject(input),
